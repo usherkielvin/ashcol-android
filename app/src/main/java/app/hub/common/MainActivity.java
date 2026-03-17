@@ -311,18 +311,22 @@ public class MainActivity extends AppCompatActivity {
                         Log.d(TAG, "Google Sign-In successful, handling login");
                         handleGoogleLoginSuccess(signInResponse);
                     } else {
-                        // API returned success: false
-                        Log.w(TAG, "Google Sign-In failed - API returned success=false");
-                        String errorMsg = signInResponse.getMessage() != null ? signInResponse.getMessage()
-                                : getString(R.string.account_not_found_register);
+                        // API returned success: false - treat as "account not found" and send user to registration
+                        Log.w(TAG, "Google Sign-In failed - API returned success=false, redirecting to registration");
                         runOnUiThread(() -> {
-                            showError(getString(R.string.login_failed_title), errorMsg);
-                            
-                            // Re-enable login button after Google Sign-In failure
                             if (loginButton != null) {
                                 loginButton.setEnabled(true);
                                 loginButton.setText(R.string.login);
                             }
+
+                            Intent intent = new Intent(MainActivity.this, RegisterActivity.class);
+                            intent.putExtra("google_email", email);
+                            intent.putExtra("google_given_name", firstName);
+                            intent.putExtra("google_family_name", lastName);
+                            intent.putExtra("google_display_name", buildFullName(firstName, lastName));
+                            intent.putExtra("google_id_token", idToken != null ? idToken : "");
+                            startActivity(intent);
+                            finish();
                         });
                         signOutFromGoogle();
                     }
@@ -330,16 +334,24 @@ public class MainActivity extends AppCompatActivity {
                     // Handle 404 - Account not found
                     Log.w(TAG, "Google Sign-In failed - HTTP " + response.code());
                     if (response.code() == 404) {
-                        Log.d(TAG, "Account not found (404), showing registration prompt");
+                        Log.d(TAG, "Account not found (404), redirecting to registration flow");
                         runOnUiThread(() -> {
-                            showError("Sign In Failed",
-                                    "No account found with this Google account. Please register first.");
-                            
-                            // Re-enable login button after Google Sign-In failure
+                            // Re-enable login button before navigating
                             if (loginButton != null) {
                                 loginButton.setEnabled(true);
                                 loginButton.setText(R.string.login);
                             }
+
+                            // Launch RegisterActivity prefilled with Google data
+                            Intent intent = new Intent(MainActivity.this, RegisterActivity.class);
+                            intent.putExtra("google_email", email);
+                            intent.putExtra("google_given_name", firstName);
+                            intent.putExtra("google_family_name", lastName);
+                            intent.putExtra("google_display_name", buildFullName(firstName, lastName));
+                            intent.putExtra("google_id_token", idToken != null ? idToken : "");
+                            startActivity(intent);
+                            // Optionally finish login screen so back doesn't return here
+                            finish();
                         });
                         signOutFromGoogle();
                         return;

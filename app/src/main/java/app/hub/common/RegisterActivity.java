@@ -18,6 +18,7 @@ import app.hub.util.FCMTokenHelper;
 import app.hub.util.TokenManager;
 import app.hub.util.UserLocationManager;
 import android.content.Intent;
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,6 +26,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -93,8 +95,24 @@ public class RegisterActivity extends AppCompatActivity {
 			// Setup back press handling using OnBackPressedDispatcher
 			setupBackPressHandler();
 
-			// Start with Step 1: Create New Account welcome screen
-			if (savedInstanceState == null) {
+			// If launched with Google account details from MainActivity, jump straight into
+			// Google sign-up flow instead of the welcome screen.
+			if (savedInstanceState == null && getIntent() != null && getIntent().hasExtra("google_email")) {
+				String email = getIntent().getStringExtra("google_email");
+				String givenName = getIntent().getStringExtra("google_given_name");
+				String familyName = getIntent().getStringExtra("google_family_name");
+				String displayName = getIntent().getStringExtra("google_display_name");
+				String idToken = getIntent().getStringExtra("google_id_token");
+
+				handleGoogleSignInSuccess(
+					email != null ? email : "",
+					givenName,
+					familyName,
+					displayName,
+					idToken != null ? idToken : ""
+				);
+			} else if (savedInstanceState == null) {
+				// Default: Step 1 - Create New Account welcome screen
 				showCreateNewAccountFragment();
 			}
 		} catch (Exception e) {
@@ -263,6 +281,68 @@ public class RegisterActivity extends AppCompatActivity {
 			uval.setVisibility(View.GONE);
 		if (phoneVal != null)
 			phoneVal.setVisibility(View.GONE);
+
+		// After prefill, jump user to the first missing field.
+		focusFirstIncompleteTellUsField();
+	}
+
+	private void focusFirstIncompleteTellUsField() {
+		View target = null;
+
+		if (isEmpty(firstNameInput)) {
+			target = firstNameInput;
+		} else if (isEmpty(lastNameInput)) {
+			target = lastNameInput;
+		} else if (isEmpty(usernameInput)) {
+			target = usernameInput;
+		} else if (isEmpty(phoneInput)) {
+			target = phoneInput;
+		} else if (isEmpty(regionInput)) {
+			target = regionInput;
+		} else if (isEmpty(cityInput)) {
+			target = cityInput;
+		}
+
+		if (target == null) {
+			return;
+		}
+
+		final View focusTarget = target;
+		focusTarget.post(() -> {
+			try {
+				focusTarget.requestFocus();
+
+				if (focusTarget instanceof TextInputEditText) {
+					TextInputEditText editText = (TextInputEditText) focusTarget;
+					if (editText.getText() != null) {
+						editText.setSelection(editText.getText().length());
+					}
+				}
+
+				showKeyboard(focusTarget);
+
+				if (focusTarget instanceof MaterialAutoCompleteTextView) {
+					((MaterialAutoCompleteTextView) focusTarget).showDropDown();
+				}
+			} catch (Exception e) {
+				Log.w(TAG, "Failed to focus Tell Us field: " + e.getMessage(), e);
+			}
+		});
+	}
+
+	private boolean isEmpty(TextView view) {
+		return view == null || view.getText() == null || view.getText().toString().trim().isEmpty();
+	}
+
+	private void showKeyboard(View view) {
+		try {
+			InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+			if (imm != null) {
+				imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+			}
+		} catch (Exception e) {
+			Log.w(TAG, "Failed to show keyboard: " + e.getMessage(), e);
+		}
 	}
 
 	// Setup validation listeners for Tell Us form
