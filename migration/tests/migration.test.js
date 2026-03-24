@@ -607,3 +607,651 @@ async function migratePayments(payments, db, uidMap, ticketIdMap) {
   await batch.commit();
   return { successCount, failureCount, errors };
 }
+
+// ===========================================================================
+// Phase tests: User migration (Requirement 11.1, 11.6)
+// ===========================================================================
+
+describe('User migration phase', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Default: createUser succeeds and returns a uid
+    mockAuth.createUser.mockImplementation(({ email }) => {
+      const uid = firebaseUidMap[email];
+      if (!uid) throw new Error(`No UID mapping for ${email}`);
+      return Promise.resolve({ uid });
+    });
+  });
+
+  test('migrates all sample users and returns correct success count', async () => {
+    const result = await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    expect(result.successCount).toBe(sampleUsers.length);
+    expect(result.failureCount).toBe(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test('creates a Firebase Auth account for each user', async () => {
+    await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    expect(mockAuth.createUser).toHaveBeenCalledTimes(sampleUsers.length);
+    sampleUsers.forEach((u) => {
+      expect(mockAuth.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: u.email, displayName: u.name })
+      );
+    });
+  });
+
+  test('writes a Firestore user document for each user', async () => {
+    await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    // collection('users') called once per user
+    expect(mockFirestore.collection).toHaveBeenCalledWith('users');
+  });
+
+  test('builds uidMap keyed by email', async () => {
+    const result = await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    sampleUsers.forEach((u) => {
+      expect(result.uidMap[u.email]).toBe(firebaseUidMap[u.email]);
+    });
+  });
+
+  test('falls back to getUserByEmail when createUser throws (user already exists)', async () => {
+    mockAuth.createUser.mockRejectedValueOnce(new Error('auth/email-already-exists'));
+    mockAuth.getUserByEmail.mockResolvedValueOnce({ uid: firebaseUidMap['alice@example.com'] });
+
+    const result = await migrateUsers([sampleUsers[0]], mockAuth, mockFirestore);
+
+    expect(mockAuth.getUserByEmail).toHaveBeenCalledWith('alice@example.com');
+    expect(result.successCount).toBe(1);
+    expect(result.failureCount).toBe(0);
+  });
+
+  test('records failure and continues when both createUser and getUserByEmail fail', async () => {
+    mockAuth.createUser.mockRejectedValueOnce(new Error('network error'));
+    mockAuth.getUserByEmail.mockRejectedValueOnce(new Error('network error'));
+
+    const result = await migrateUsers([sampleUsers[0]], mockAuth, mockFirestore);
+
+    expect(result.failureCount).toBe(1);
+    expect(result.errors[0].record).toBe('alice@example.com');
+  });
+
+  test('continues migrating remaining users after a single failure', async () => {
+    // First user: createUser fails AND getUserByEmail fails → counted as 1 failure
+    // Remaining users: createUser succeeds
+    mockAuth.createUser
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockImplementation(({ email }) => Promise.resolve({ uid: firebaseUidMap[email] }));
+    mockAuth.getUserByEmail.mockRejectedValueOnce(new Error('network error'));
+
+    const setMock = jest.fn().mockResolvedValue(undefined);
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn().mockReturnValue({ set: setMock }),
+    });
+
+    const result = await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    expect(result.failureCount).toBe(1);
+    expect(result.successCount).toBe(sampleUsers.length - 1);
+  });
+
+  test('user document contains all required fields', async () => {
+    const setMock = jest.fn().mockResolvedValue(undefined);
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn().mockReturnValue({ set: setMock }),
+    });
+
+    await migrateUsers([sampleUsers[3]], mockAuth, mockFirestore); // Dave Customer
+
+    expect(setMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'dave@example.com',
+        name: 'Dave Customer',
+        role: 'user',
+        fcmTokens: [],
+        branchId: null,
+      })
+    );
+  });
+});
+
+// ===========================================================================
+// Phase tests: Branch migration (Requirement 11.3)
+// ===========================================================================
+
+describe('Branch migration phase', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBatch.set.mockReturnThis();
+    mockBatch.commit.mockResolvedValue(undefined);
+    mockFirestore.batch.mockReturnValue(mockBatch);
+
+    let docCounter = 0;
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn(() => {
+        docCounter++;
+        return { id: `branch-doc-${docCounter}`, set: jest.fn().mockResolvedValue(undefined) };
+      }),
+    });
+  });
+
+  test('migrates all sample branches and returns correct success count', async () => {
+    const result = await migrateBranches(sampleBranches, mockFirestore, firebaseUidMap);
+
+    expect(result.successCount).toBe(sampleBranches.length);
+    expect(result.failureCount).toBe(0);
+  });
+
+  test('uses batch writes for branch migration', async () => {
+    await migrateBranches(sampleBranches, mockFirestore, firebaseUidMap);
+
+    expect(mockFirestore.batch).toHaveBeenCalled();
+    expect(mockBatch.commit).toHaveBeenCalled();
+    expect(mockBatch.set).toHaveBeenCalledTimes(sampleBranches.length);
+  });
+
+  test('builds branchIdMap keyed by MySQL branch id', async () => {
+    const result = await migrateBranches(sampleBranches, mockFirestore, firebaseUidMap);
+
+    sampleBranches.forEach((b) => {
+      expect(result.branchIdMap[b.id]).toBeDefined();
+      expect(typeof result.branchIdMap[b.id]).toBe('string');
+    });
+  });
+
+  test('branch document contains GeoPoint location', async () => {
+    await migrateBranches(sampleBranches, mockFirestore, firebaseUidMap);
+
+    expect(admin.firestore.GeoPoint).toHaveBeenCalledWith(
+      sampleBranches[0].latitude,
+      sampleBranches[0].longitude
+    );
+  });
+
+  test('maps manager_id to Firebase UID in branch document', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateBranches(sampleBranches, mockFirestore, firebaseUidMap);
+
+    const downtownBranch = capturedDocs[0];
+    expect(downtownBranch.managerId).toBe(firebaseUidMap['bob@example.com']);
+  });
+
+  test('sets managerId to null when branch has no manager', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateBranches(sampleBranches, mockFirestore, firebaseUidMap);
+
+    const uptownBranch = capturedDocs[1]; // manager_id = null
+    expect(uptownBranch.managerId).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Phase tests: Employee migration (Requirement 11.4)
+// ===========================================================================
+
+describe('Employee migration phase', () => {
+  const testBranchIdMap = { 1: 'branch-downtown-001' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBatch.set.mockReturnThis();
+    mockBatch.commit.mockResolvedValue(undefined);
+    mockFirestore.batch.mockReturnValue(mockBatch);
+
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn(() => ({
+        id: 'branch-downtown-001',
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({ id: 'emp-doc-001' })),
+        })),
+      })),
+    });
+  });
+
+  test('migrates all sample employees and returns correct success count', async () => {
+    const result = await migrateEmployees(sampleEmployees, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(result.successCount).toBe(sampleEmployees.length);
+    expect(result.failureCount).toBe(0);
+  });
+
+  test('uses batch writes for employee migration', async () => {
+    await migrateEmployees(sampleEmployees, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(mockBatch.commit).toHaveBeenCalled();
+    expect(mockBatch.set).toHaveBeenCalledTimes(sampleEmployees.length);
+  });
+
+  test('employee document contains userId mapped to Firebase UID', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateEmployees(sampleEmployees, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(capturedDocs[0].userId).toBe(firebaseUidMap['carol@example.com']);
+  });
+
+  test('employee document splits specializations string into array', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateEmployees(sampleEmployees, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(capturedDocs[0].specializations).toEqual(['plumbing', 'electrical']);
+  });
+
+  test('records failure when branch not found in branchIdMap', async () => {
+    const result = await migrateEmployees(
+      sampleEmployees,
+      mockFirestore,
+      firebaseUidMap,
+      {} // empty map - branch not found
+    );
+
+    expect(result.failureCount).toBe(1);
+    expect(result.errors[0].error).toMatch(/not found/i);
+  });
+});
+
+// ===========================================================================
+// Phase tests: Ticket migration (Requirement 11.2, 11.7, 11.8)
+// ===========================================================================
+
+describe('Ticket migration phase', () => {
+  const testBranchIdMap = { 1: 'branch-downtown-001', 2: 'branch-uptown-002' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBatch.set.mockReturnThis();
+    mockBatch.commit.mockResolvedValue(undefined);
+    mockFirestore.batch.mockReturnValue(mockBatch);
+
+    let counter = 0;
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn(() => ({ id: `ticket-doc-${++counter}` })),
+    });
+  });
+
+  test('migrates all sample tickets and returns correct success count', async () => {
+    const result = await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(result.successCount).toBe(sampleTickets.length);
+    expect(result.failureCount).toBe(0);
+  });
+
+  test('uses batch writes for ticket migration', async () => {
+    await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(mockBatch.commit).toHaveBeenCalled();
+    expect(mockBatch.set).toHaveBeenCalledTimes(sampleTickets.length);
+  });
+
+  test('builds ticketIdMap keyed by MySQL ticket id', async () => {
+    const result = await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    sampleTickets.forEach((t) => {
+      expect(result.ticketIdMap[t.id]).toBeDefined();
+    });
+  });
+
+  test('ticket document maps customer_id to Firebase UID', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(capturedDocs[0].customerId).toBe(firebaseUidMap['dave@example.com']);
+  });
+
+  test('ticket document maps branch_id to Firestore document ID', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(capturedDocs[0].branchId).toBe('branch-downtown-001');
+  });
+
+  test('ticket document converts datetime fields to Firestore Timestamps', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(capturedDocs[0].createdAt).toBeDefined();
+    expect(capturedDocs[0].createdAt._seconds).toBeGreaterThan(0);
+    expect(capturedDocs[0].scheduledDate).toBeDefined();
+    expect(capturedDocs[0].completedDate).toBeDefined();
+  });
+
+  test('ticket document has null scheduledDate for pending ticket', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    const pendingTicketDoc = capturedDocs[1]; // sampleTickets[1] is pending
+    expect(pendingTicketDoc.scheduledDate).toBeNull();
+    expect(pendingTicketDoc.completedDate).toBeNull();
+    expect(pendingTicketDoc.branchId).toBeNull();
+    expect(pendingTicketDoc.assignedEmployeeId).toBeNull();
+  });
+
+  test('ticket document denormalises customer info', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migrateTickets(sampleTickets, mockFirestore, firebaseUidMap, testBranchIdMap);
+
+    expect(capturedDocs[0].customerName).toBe('Dave Customer');
+    expect(capturedDocs[0].customerEmail).toBe('dave@example.com');
+  });
+});
+
+// ===========================================================================
+// Phase tests: Payment migration (Requirement 11.5, 11.7)
+// ===========================================================================
+
+describe('Payment migration phase', () => {
+  const testTicketIdMap = { 1: 'ticket-doc-001', 2: 'ticket-doc-002', 3: 'ticket-doc-003' };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBatch.set.mockReturnThis();
+    mockBatch.commit.mockResolvedValue(undefined);
+    mockFirestore.batch.mockReturnValue(mockBatch);
+
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn(() => ({
+        id: 'ticket-doc-001',
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({ id: 'payment-doc-001' })),
+        })),
+      })),
+    });
+  });
+
+  test('migrates all sample payments and returns correct success count', async () => {
+    const result = await migratePayments(samplePayments, mockFirestore, firebaseUidMap, testTicketIdMap);
+
+    expect(result.successCount).toBe(samplePayments.length);
+    expect(result.failureCount).toBe(0);
+  });
+
+  test('uses batch writes for payment migration', async () => {
+    await migratePayments(samplePayments, mockFirestore, firebaseUidMap, testTicketIdMap);
+
+    expect(mockBatch.commit).toHaveBeenCalled();
+    expect(mockBatch.set).toHaveBeenCalledTimes(samplePayments.length);
+  });
+
+  test('payment document maps employee_id to Firebase UID', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migratePayments(samplePayments, mockFirestore, firebaseUidMap, testTicketIdMap);
+
+    expect(capturedDocs[0].employeeId).toBe(firebaseUidMap['carol@example.com']);
+  });
+
+  test('payment document converts paidAt to Firestore Timestamp', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migratePayments(samplePayments, mockFirestore, firebaseUidMap, testTicketIdMap);
+
+    expect(capturedDocs[0].paidAt).toBeDefined();
+    expect(capturedDocs[0].paidAt._seconds).toBeGreaterThan(0);
+  });
+
+  test('payment document contains amount, method, status, transactionId', async () => {
+    const capturedDocs = [];
+    mockBatch.set.mockImplementation((ref, doc) => {
+      capturedDocs.push(doc);
+      return mockBatch;
+    });
+
+    await migratePayments(samplePayments, mockFirestore, firebaseUidMap, testTicketIdMap);
+
+    expect(capturedDocs[0].amount).toBe(175.0);
+    expect(capturedDocs[0].method).toBe('credit_card');
+    expect(capturedDocs[0].status).toBe('paid');
+    expect(capturedDocs[0].transactionId).toBe('TXN-20230510-001');
+  });
+
+  test('records failure when ticket not found in ticketIdMap', async () => {
+    const result = await migratePayments(
+      samplePayments,
+      mockFirestore,
+      firebaseUidMap,
+      {} // empty map
+    );
+
+    expect(result.failureCount).toBe(1);
+    expect(result.errors[0].error).toMatch(/not found/i);
+  });
+});
+
+// ===========================================================================
+// Data integrity tests (Requirement 11.1 - 11.5)
+// ===========================================================================
+
+describe('Data integrity verification', () => {
+  test('all sample users have unique emails', () => {
+    const emails = sampleUsers.map((u) => u.email);
+    const uniqueEmails = new Set(emails);
+    expect(uniqueEmails.size).toBe(emails.length);
+  });
+
+  test('all sample tickets reference valid customer_ids', () => {
+    const userIds = new Set(sampleUsers.map((u) => u.id));
+    sampleTickets.forEach((t) => {
+      expect(userIds.has(t.customer_id)).toBe(true);
+    });
+  });
+
+  test('all sample tickets with assigned_employee_id reference valid users', () => {
+    const userIds = new Set(sampleUsers.map((u) => u.id));
+    sampleTickets
+      .filter((t) => t.assigned_employee_id !== null)
+      .forEach((t) => {
+        expect(userIds.has(t.assigned_employee_id)).toBe(true);
+      });
+  });
+
+  test('all sample tickets with branch_id reference valid branches', () => {
+    const branchIds = new Set(sampleBranches.map((b) => b.id));
+    sampleTickets
+      .filter((t) => t.branch_id !== null)
+      .forEach((t) => {
+        expect(branchIds.has(t.branch_id)).toBe(true);
+      });
+  });
+
+  test('all sample payments reference valid ticket_ids', () => {
+    const ticketIds = new Set(sampleTickets.map((t) => t.id));
+    samplePayments.forEach((p) => {
+      expect(ticketIds.has(p.ticket_id)).toBe(true);
+    });
+  });
+
+  test('all sample employees reference valid branch_ids', () => {
+    const branchIds = new Set(sampleBranches.map((b) => b.id));
+    sampleEmployees.forEach((e) => {
+      expect(branchIds.has(e.branch_id)).toBe(true);
+    });
+  });
+
+  test('firebaseUidMap covers all sample users', () => {
+    sampleUsers.forEach((u) => {
+      expect(firebaseUidMap[u.email]).toBeDefined();
+      expect(typeof firebaseUidMap[u.email]).toBe('string');
+    });
+  });
+
+  test('full migration pipeline preserves record counts', async () => {
+    // Reset mocks
+    jest.clearAllMocks();
+    mockAuth.createUser.mockImplementation(({ email }) =>
+      Promise.resolve({ uid: firebaseUidMap[email] })
+    );
+    mockBatch.set.mockReturnThis();
+    mockBatch.commit.mockResolvedValue(undefined);
+    mockFirestore.batch.mockReturnValue(mockBatch);
+
+    let docCounter = 0;
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn(() => ({
+        id: `doc-${++docCounter}`,
+        set: jest.fn().mockResolvedValue(undefined),
+        collection: jest.fn(() => ({
+          doc: jest.fn(() => ({ id: `subdoc-${++docCounter}` })),
+        })),
+      })),
+    });
+
+    const userResult = await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+    const branchResult = await migrateBranches(sampleBranches, mockFirestore, userResult.uidMap);
+    const empResult = await migrateEmployees(
+      sampleEmployees,
+      mockFirestore,
+      userResult.uidMap,
+      branchResult.branchIdMap
+    );
+    const ticketResult = await migrateTickets(
+      sampleTickets,
+      mockFirestore,
+      userResult.uidMap,
+      branchResult.branchIdMap
+    );
+    const paymentResult = await migratePayments(
+      samplePayments,
+      mockFirestore,
+      userResult.uidMap,
+      ticketResult.ticketIdMap
+    );
+
+    expect(userResult.successCount).toBe(sampleUsers.length);
+    expect(branchResult.successCount).toBe(sampleBranches.length);
+    expect(empResult.successCount).toBe(sampleEmployees.length);
+    expect(ticketResult.successCount).toBe(sampleTickets.length);
+    expect(paymentResult.successCount).toBe(samplePayments.length);
+  });
+});
+
+// ===========================================================================
+// Error handling and reporting tests (Requirement 11.9, 11.10)
+// ===========================================================================
+
+describe('Error handling and migration report', () => {
+  test('migration report includes success and failure counts', async () => {
+    jest.clearAllMocks();
+    mockAuth.createUser.mockImplementation(({ email }) =>
+      Promise.resolve({ uid: firebaseUidMap[email] })
+    );
+
+    const setMock = jest.fn().mockResolvedValue(undefined);
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn().mockReturnValue({ set: setMock }),
+    });
+
+    const result = await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    expect(result).toHaveProperty('successCount');
+    expect(result).toHaveProperty('failureCount');
+    expect(result).toHaveProperty('errors');
+    expect(typeof result.successCount).toBe('number');
+    expect(typeof result.failureCount).toBe('number');
+    expect(Array.isArray(result.errors)).toBe(true);
+  });
+
+  test('error entries contain record identifier and error message', async () => {
+    jest.clearAllMocks();
+    mockAuth.createUser.mockRejectedValue(new Error('auth/network-request-failed'));
+    mockAuth.getUserByEmail.mockRejectedValue(new Error('auth/network-request-failed'));
+
+    const result = await migrateUsers([sampleUsers[0]], mockAuth, mockFirestore);
+
+    expect(result.errors[0]).toHaveProperty('record');
+    expect(result.errors[0]).toHaveProperty('error');
+    expect(result.errors[0].record).toBe('alice@example.com');
+  });
+
+  test('single record failure does not abort remaining migrations', async () => {
+    jest.clearAllMocks();
+    let callCount = 0;
+    mockAuth.createUser.mockImplementation(({ email }) => {
+      callCount++;
+      if (callCount === 1) return Promise.reject(new Error('transient error'));
+      return Promise.resolve({ uid: firebaseUidMap[email] });
+    });
+    mockAuth.getUserByEmail.mockRejectedValueOnce(new Error('transient error'));
+
+    const setMock = jest.fn().mockResolvedValue(undefined);
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn().mockReturnValue({ set: setMock }),
+    });
+
+    const result = await migrateUsers(sampleUsers, mockAuth, mockFirestore);
+
+    // 1 failure, rest succeed
+    expect(result.failureCount).toBe(1);
+    expect(result.successCount).toBe(sampleUsers.length - 1);
+    expect(result.errors).toHaveLength(1);
+  });
+
+  test('batch commit failure is captured as error', async () => {
+    jest.clearAllMocks();
+    mockBatch.set.mockReturnThis();
+    mockBatch.commit.mockRejectedValue(new Error('RESOURCE_EXHAUSTED'));
+    mockFirestore.batch.mockReturnValue(mockBatch);
+
+    let docCounter = 0;
+    mockFirestore.collection.mockReturnValue({
+      doc: jest.fn(() => ({ id: `doc-${++docCounter}` })),
+    });
+
+    await expect(
+      migrateBranches(sampleBranches, mockFirestore, firebaseUidMap)
+    ).rejects.toThrow('RESOURCE_EXHAUSTED');
+  });
+});

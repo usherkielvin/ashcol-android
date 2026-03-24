@@ -69,12 +69,6 @@ dependencies {
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
 
-    // Networking
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.converter.gson)
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
-
     // AndroidX & UI
     implementation(libs.androidx.core)
     implementation(libs.core.splashscreen)
