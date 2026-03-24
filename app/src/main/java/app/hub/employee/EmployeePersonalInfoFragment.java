@@ -40,20 +40,12 @@ import java.util.Locale;
 
 import app.hub.R;
 import app.hub.BuildConfig;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.ProfilePhotoResponse;
 import app.hub.api.UpdateProfileRequest;
 import app.hub.api.UserResponse;
 import app.hub.api.DeleteAccountRequest;
 import app.hub.api.DeleteAccountResponse;
 import app.hub.util.TokenManager;
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.RequestBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class EmployeePersonalInfoFragment extends Fragment {
 

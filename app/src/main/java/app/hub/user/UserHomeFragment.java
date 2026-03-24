@@ -21,14 +21,9 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.TicketListResponse;
 import app.hub.api.UserResponse;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 /**
  * A simple {@link Fragment} subclass.

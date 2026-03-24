@@ -1,15 +1,14 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class UpdateTicketStatusRequest {
-    @SerializedName("status")
+    
     private String status;
 
-    @SerializedName("status_detail")
+    
     private String statusDetail;
     
-    @SerializedName("assigned_staff_id")
+    
     private Integer assignedStaffId;
 
     public UpdateTicketStatusRequest(String status) {

@@ -1,15 +1,14 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class UpdateLocationRequest {
-    @SerializedName("location")
+    
     private String location;
     
-    @SerializedName("latitude")
+    
     private double latitude;
     
-    @SerializedName("longitude")
+    
     private double longitude;
 
     public UpdateLocationRequest(String location) {

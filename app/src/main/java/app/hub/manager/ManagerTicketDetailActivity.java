@@ -24,17 +24,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.EmployeeResponse;
 import app.hub.api.TicketDetailResponse;
 import app.hub.api.UpdateTicketStatusRequest;
 import app.hub.api.UpdateTicketStatusResponse;
 import app.hub.map.MapViewActivity;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class ManagerTicketDetailActivity extends AppCompatActivity
         implements com.google.android.gms.maps.OnMapReadyCallback {

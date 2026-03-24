@@ -1,15 +1,14 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class SetScheduleResponse {
-    @SerializedName("success")
+    
     private boolean success;
     
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("ticket")
+    
     private TicketData ticket;
 
     public boolean isSuccess() {
@@ -37,19 +36,19 @@ public class SetScheduleResponse {
     }
 
     public static class TicketData {
-        @SerializedName("ticket_id")
+        
         private String ticketId;
         
-        @SerializedName("scheduled_date")
+        
         private String scheduledDate;
         
-        @SerializedName("scheduled_time")
+        
         private String scheduledTime;
         
-        @SerializedName("schedule_notes")
+        
         private String scheduleNotes;
         
-        @SerializedName("assigned_staff")
+        
         private String assignedStaff;
 
         public String getTicketId() {

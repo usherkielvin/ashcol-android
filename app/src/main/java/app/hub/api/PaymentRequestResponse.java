@@ -1,21 +1,20 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class PaymentRequestResponse {
-    @SerializedName("success")
+    
     private boolean success;
 
-    @SerializedName("message")
+    
     private String message;
 
-    @SerializedName("ticket_status")
+    
     private String ticketStatus;
 
-    @SerializedName("ticket_id")
+    
     private String ticketId;
 
-    @SerializedName("is_reminder")
+    
     private boolean isReminder;
 
     public boolean isSuccess() {

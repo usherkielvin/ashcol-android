@@ -1,21 +1,20 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class CreateTicketResponse {
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("ticket")
+    
     private TicketData ticket;
     
-    @SerializedName("ticket_id")
+    
     private String ticketId;
     
-    @SerializedName("status")
+    
     private String status;
     
-    @SerializedName("success")
+    
     private boolean success = true; // Default to true for successful responses
 
     public String getMessage() {
@@ -59,40 +58,40 @@ public class CreateTicketResponse {
     }
 
     public static class TicketData {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("ticket_id")
+        
         private String ticketId;
         
-        @SerializedName("title")
+        
         private String title;
         
-        @SerializedName("description")
+        
         private String description;
         
-        @SerializedName("service_type")
+        
         private String serviceType;
         
-        @SerializedName("unit_type")
+        
         private String unitType;
         
-        @SerializedName("address")
+        
         private String address;
         
-        @SerializedName("contact")
+        
         private String contact;
 
-        @SerializedName("amount")
+        
         private Double amount;
         
-        @SerializedName("status")
+        
         private StatusData status;
         
-        @SerializedName("branch")
+        
         private BranchData branch;
         
-        @SerializedName("customer")
+        
         private CustomerData customer;
 
         // Getters and setters
@@ -134,13 +133,13 @@ public class CreateTicketResponse {
     }
 
     public static class StatusData {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("name")
+        
         private String name;
         
-        @SerializedName("color")
+        
         private String color;
 
         public int getId() { return id; }
@@ -154,13 +153,13 @@ public class CreateTicketResponse {
     }
 
     public static class BranchData {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("name")
+        
         private String name;
         
-        @SerializedName("location")
+        
         private String location;
 
         public int getId() { return id; }
@@ -174,13 +173,13 @@ public class CreateTicketResponse {
     }
 
     public static class CustomerData {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("firstName")
+        
         private String firstName;
         
-        @SerializedName("lastName")
+        
         private String lastName;
 
         public int getId() { return id; }

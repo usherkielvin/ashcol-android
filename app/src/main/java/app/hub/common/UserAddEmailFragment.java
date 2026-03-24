@@ -17,14 +17,9 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.LoginRequest;
 import app.hub.api.LoginResponse;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class UserAddEmailFragment extends Fragment {
 

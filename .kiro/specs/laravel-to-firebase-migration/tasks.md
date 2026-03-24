@@ -418,7 +418,7 @@ This implementation plan migrates an Android service ticket management applicati
     - _Requirements: 20.7, 20.8_
 
 - [ ] 22. Final integration testing
-  - [-] 22.1 Test complete user flows
+  - [x] 22.1 Test complete user flows
     - Test user registration and authentication
     - Test ticket creation with photo upload
     - Test ticket assignment and routing
@@ -427,7 +427,7 @@ This implementation plan migrates an Android service ticket management applicati
     - Test push notifications
     - _Requirements: 19.4, 19.5_
 
-  - [~] 22.2 Test role-based access control
+  - [-] 22.2 Test role-based access control
     - Verify admin can access all data
     - Verify manager can only access their branch
     - Verify employee can only access assigned tickets

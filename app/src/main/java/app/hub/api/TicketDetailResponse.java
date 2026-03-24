@@ -1,15 +1,14 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class TicketDetailResponse {
-    @SerializedName("success")
+    
     private boolean success;
 
-    @SerializedName("message")
+    
     private String message;
 
-    @SerializedName("ticket")
+    
     private TicketDetail ticket;
 
     public boolean isSuccess() {
@@ -37,73 +36,73 @@ public class TicketDetailResponse {
     }
 
     public static class TicketDetail {
-        @SerializedName("id")
+        
         private int id;
 
-        @SerializedName("ticket_id")
+        
         private String ticketId;
 
-        @SerializedName("title")
+        
         private String title;
 
-        @SerializedName("description")
+        
         private String description;
 
-        @SerializedName("service_type")
+        
         private String serviceType;
 
-        @SerializedName("unit_type")
+        
         private String unitType;
 
-        @SerializedName("address")
+        
         private String address;
 
-        @SerializedName("contact")
+        
         private String contact;
 
-        @SerializedName("amount")
+        
         private double amount;
 
-        @SerializedName("status")
+        
         private String status;
 
-        @SerializedName("status_detail")
+        
         private String statusDetail;
 
-        @SerializedName("status_color")
+        
         private String statusColor;
 
-        @SerializedName("customer_name")
+        
         private String customerName;
 
-        @SerializedName("assigned_staff")
+        
         private String assignedStaff;
 
-        @SerializedName("branch")
+        
         private String branch;
 
-        @SerializedName("image_path")
+        
         private String imagePath;
 
-        @SerializedName("created_at")
+        
         private String createdAt;
 
-        @SerializedName("updated_at")
+        
         private String updatedAt;
 
-        @SerializedName("latitude")
+        
         private double latitude;
 
-        @SerializedName("longitude")
+        
         private double longitude;
 
-        @SerializedName("scheduled_date")
+        
         private String scheduledDate;
 
-        @SerializedName("scheduled_time")
+        
         private String scheduledTime;
 
-        @SerializedName("schedule_notes")
+        
         private String scheduleNotes;
 
         // Getters and setters

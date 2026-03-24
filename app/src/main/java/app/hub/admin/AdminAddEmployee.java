@@ -2,6 +2,7 @@ package app.hub.admin;
 
 import android.app.AlertDialog;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.Toast;
 
@@ -10,16 +11,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.textfield.TextInputEditText;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
-import app.hub.api.RegisterRequest;
-import app.hub.api.RegisterResponse;
 import app.hub.util.LoadingDialog;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class AdminAddEmployee extends AppCompatActivity {
+    private static final String TAG = "AdminAddEmployee";
 
     private TextInputEditText firstNameInput, lastNameInput, usernameInput, emailInput, passwordInput, confirmPasswordInput, roleInput, branchInput;
     private String selectedRole = "";
@@ -124,37 +119,49 @@ public class AdminAddEmployee extends AppCompatActivity {
         LoadingDialog loadingDialog = new LoadingDialog(this);
         loadingDialog.show();
 
-        // Create register request with role and branch
-        RegisterRequest registerRequest = new RegisterRequest(
-            username, firstName, lastName, email, "", "", 
-            password, confirmPassword, selectedRole, selectedBranch
-        );
+        // Create a secondary Firebase instance to avoid logging out current Admin
+        com.google.firebase.FirebaseOptions options = com.google.firebase.FirebaseApp.getInstance().getOptions();
+        com.google.firebase.FirebaseApp secondaryApp;
+        try {
+            secondaryApp = com.google.firebase.FirebaseApp.getInstance("SecondaryAppAdmin");
+        } catch (IllegalStateException e) {
+            secondaryApp = com.google.firebase.FirebaseApp.initializeApp(getApplicationContext(), options, "SecondaryAppAdmin");
+        }
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<RegisterResponse> call = apiService.register(registerRequest);
-
-        call.enqueue(new Callback<RegisterResponse>() {
-            @Override
-            public void onResponse(Call<RegisterResponse> call, Response<RegisterResponse> response) {
-                loadingDialog.dismiss();
-                if (response.isSuccessful() && response.body() != null) {
-                    RegisterResponse registerResponse = response.body();
-                    if (registerResponse.isSuccess()) {
-                        Toast.makeText(AdminAddEmployee.this, "Technician created successfully", Toast.LENGTH_SHORT).show();
+        com.google.firebase.auth.FirebaseAuth secondaryAuth = com.google.firebase.auth.FirebaseAuth.getInstance(secondaryApp);
+        
+        secondaryAuth.createUserWithEmailAndPassword(email, password)
+            .addOnSuccessListener(authResult -> {
+                String newUid = authResult.getUser().getUid();
+                java.util.Map<String, Object> userData = new java.util.HashMap<>();
+                userData.put("uid", newUid);
+                userData.put("email", email);
+                userData.put("firstName", firstName);
+                userData.put("lastName", lastName);
+                userData.put("username", username);
+                userData.put("role", selectedRole);
+                userData.put("branch", selectedBranch);
+                userData.put("isApproved", true);
+                userData.put("created_at", System.currentTimeMillis());
+                
+                com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users")
+                    .document(newUid).set(userData)
+                    .addOnSuccessListener(aVoid -> {
+                        loadingDialog.dismiss();
+                        Toast.makeText(AdminAddEmployee.this, selectedRole + " created successfully", Toast.LENGTH_SHORT).show();
+                        secondaryAuth.signOut();
                         finish();
-                    } else {
-                        Toast.makeText(AdminAddEmployee.this, "Failed to create technician: " + registerResponse.getMessage(), Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    Toast.makeText(AdminAddEmployee.this, "Failed to create technician: Server error", Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<RegisterResponse> call, Throwable t) {
+                    })
+                    .addOnFailureListener(e -> {
+                        loadingDialog.dismiss();
+                        Log.e(TAG, "Failed to save user doc", e);
+                        Toast.makeText(AdminAddEmployee.this, "Failed to save user details: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+            })
+            .addOnFailureListener(e -> {
                 loadingDialog.dismiss();
-                Toast.makeText(AdminAddEmployee.this, "Network error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
+                Log.e(TAG, "Failed to create user", e);
+                Toast.makeText(AdminAddEmployee.this, "Registration failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            });
     }
 }

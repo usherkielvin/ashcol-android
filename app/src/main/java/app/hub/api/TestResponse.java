@@ -1,18 +1,17 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class TestResponse {
-    @SerializedName("success")
+    
     private boolean success;
     
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("user")
+    
     private UserInfo user;
     
-    @SerializedName("timestamp")
+    
     private String timestamp;
 
     public boolean isSuccess() {
@@ -48,19 +47,19 @@ public class TestResponse {
     }
 
     public static class UserInfo {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("name")
+        
         private String name;
         
-        @SerializedName("email")
+        
         private String email;
         
-        @SerializedName("role")
+        
         private String role;
         
-        @SerializedName("is_customer")
+        
         private boolean isCustomer;
 
         public int getId() {

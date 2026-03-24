@@ -39,20 +39,12 @@ import java.util.Map;
 import java.util.TimeZone;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.CreateTicketRequest;
 import app.hub.api.CreateTicketResponse;
 import app.hub.api.UserResponse;
 import app.hub.api.TicketListResponse;
 import app.hub.map.MapSelectionActivity;
 import app.hub.util.TokenManager;
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.RequestBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class ServiceSelectActivity extends AppCompatActivity {
 

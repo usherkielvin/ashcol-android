@@ -1,15 +1,14 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class CompleteWorkRequest {
-    @SerializedName("payment_method")
+    
     private String paymentMethod;
     
-    @SerializedName("amount")
+    
     private double amount;
     
-    @SerializedName("notes")
+    
     private String notes;
 
     public CompleteWorkRequest(String paymentMethod, double amount, String notes) {

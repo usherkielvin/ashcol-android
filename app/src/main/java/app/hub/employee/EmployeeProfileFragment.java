@@ -26,8 +26,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.ChangePasswordRequest;
 import app.hub.api.ChangePasswordResponse;
 import app.hub.common.MainActivity;
@@ -36,9 +34,6 @@ import app.hub.util.LoadingDialog;
 import app.hub.util.TokenManager;
 import app.hub.util.UiPreferences;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;

@@ -20,16 +20,11 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.button.MaterialButton;
 
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.VerificationRequest;
 import app.hub.api.VerificationResponse;
 import app.hub.api.VerifyEmailRequest;
 import app.hub.api.VerifyEmailResponse;
 import app.hub.common.RegisterActivity;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class user_emailOtp extends Fragment {
     private static final String TAG = "user_emailOtp";

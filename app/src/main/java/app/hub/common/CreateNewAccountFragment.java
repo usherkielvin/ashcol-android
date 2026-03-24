@@ -25,14 +25,9 @@ import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.Task;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.GoogleSignInRequest;
 import app.hub.api.GoogleSignInResponse;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class CreateNewAccountFragment extends Fragment {
 	

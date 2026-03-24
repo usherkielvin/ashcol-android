@@ -16,11 +16,6 @@ import androidx.fragment.app.Fragment;
 
 import app.hub.R;
 import app.hub.api.AboutResponse;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class ProfileAboutUsFragment extends Fragment {
 
@@ -65,29 +60,15 @@ public class ProfileAboutUsFragment extends Fragment {
     }
 
     private void loadAboutContent() {
-        setLoading(true);
-        ApiService apiService = ApiClient.getApiService();
-        Call<AboutResponse> call = apiService.getAbout();
-        call.enqueue(new Callback<AboutResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<AboutResponse> call, @NonNull Response<AboutResponse> response) {
-                if (!isAdded()) return;
-
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    AboutResponse.Data data = response.body().getData();
-                    if (data != null) {
-                        bindAbout(data);
-                    }
-                }
-                setLoading(false);
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<AboutResponse> call, @NonNull Throwable t) {
-                if (!isAdded()) return;
-                setLoading(false);
-            }
-        });
+        setLoading(false);
+        // Hardcoded content as pure Firebase migration is in progress
+        AboutResponse.Data data = new AboutResponse.Data();
+        data.setTitle("Ashcol ServiceHub");
+        data.setDescription("Your premium service provider for all your technical needs.");
+        data.setSupportEmail("support@ashcol.com");
+        data.setSupportPhone("+1 234 567 890");
+        data.setSupportHours("Mon-Fri 9:00 AM - 6:00 PM");
+        bindAbout(data);
     }
 
     private void bindAbout(AboutResponse.Data data) {

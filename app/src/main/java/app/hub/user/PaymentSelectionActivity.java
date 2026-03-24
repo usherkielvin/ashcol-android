@@ -15,15 +15,10 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.PaymentConfirmationBody;
 import app.hub.api.PaymentConfirmationResponse;
 import app.hub.api.PaymentMethod;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class PaymentSelectionActivity extends AppCompatActivity {
     private static final String TAG = "PaymentSelection";

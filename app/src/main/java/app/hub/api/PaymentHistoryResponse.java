@@ -1,16 +1,15 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public class PaymentHistoryResponse {
-    @SerializedName("success")
+    
     private boolean success;
     
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("payments")
+    
     private List<PaymentItem> payments;
 
     public boolean isSuccess() {
@@ -38,40 +37,40 @@ public class PaymentHistoryResponse {
     }
 
     public static class PaymentItem {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("ticket_id")
+        
         private String ticketId;
         
-        @SerializedName("customer_name")
+        
         private String customerName;
         
-        @SerializedName("technician_name")
+        
         private String technicianName;
         
-        @SerializedName("payment_method")
+        
         private String paymentMethod;
         
-        @SerializedName("amount")
+        
         private double amount;
         
-        @SerializedName("status")
+        
         private String status;
         
-        @SerializedName("notes")
+        
         private String notes;
         
-        @SerializedName("collected_at")
+        
         private String collectedAt;
         
-        @SerializedName("submitted_at")
+        
         private String submittedAt;
         
-        @SerializedName("completed_at")
+        
         private String completedAt;
         
-        @SerializedName("created_at")
+        
         private String createdAt;
 
         public int getId() {

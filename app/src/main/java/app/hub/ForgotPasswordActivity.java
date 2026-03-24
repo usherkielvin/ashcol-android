@@ -12,15 +12,10 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.ResetPasswordRequest;
 import app.hub.api.ResetPasswordResponse;
 import app.hub.api.VerificationRequest;
 import app.hub.api.VerificationResponse;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class ForgotPasswordActivity extends AppCompatActivity {
 

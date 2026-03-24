@@ -14,15 +14,10 @@ import androidx.fragment.app.Fragment;
 import com.google.android.material.button.MaterialButton;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.CompleteWorkResponse;
 import app.hub.api.PaymentDetailResponse;
 import app.hub.common.FirestoreManager;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 /**
  * Fragment shown to technician after requesting payment from customer.

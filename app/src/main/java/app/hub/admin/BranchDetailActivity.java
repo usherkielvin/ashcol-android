@@ -12,13 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.EmployeeResponse;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class BranchDetailActivity extends AppCompatActivity {
 

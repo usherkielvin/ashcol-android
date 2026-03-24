@@ -7,23 +7,23 @@ import androidx.annotation.NonNull;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.messaging.FirebaseMessaging;
 
-import app.hub.api.ApiClient;
-import app.hub.api.FCMTokenRequest;
-import app.hub.api.FCMTokenResponse;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
- * Helper class to manage FCM token registration with backend
+ * Helper class to manage FCM token registration with Firestore
  */
 public class FCMTokenHelper {
     private static final String TAG = "FCMTokenHelper";
 
     /**
-     * Get FCM token and register it with backend
+     * Get FCM token and register it with Firestore
      */
     public static void registerTokenWithBackend(Context context) {
         TokenManager tokenManager = new TokenManager(context);
@@ -55,80 +55,52 @@ public class FCMTokenHelper {
                         // Save token locally
                         tokenManager.saveFCMToken(fcmToken);
 
-                        // Send token to backend
+                        // Send token to Firestore
                         sendTokenToBackend(context, fcmToken);
                     }
                 });
     }
 
     /**
-     * Send FCM token to backend API
+     * Send FCM token to Firestore
      */
     private static void sendTokenToBackend(Context context, String fcmToken) {
-        TokenManager tokenManager = new TokenManager(context);
-        String authToken = tokenManager.getAuthToken();
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        FirebaseUser user = auth.getCurrentUser();
 
-        if (authToken == null) {
-            Log.w(TAG, "No auth token available");
+        if (user == null) {
+            Log.w(TAG, "No Firebase user available");
             return;
         }
 
-        FCMTokenRequest request = new FCMTokenRequest(fcmToken);
-
-        Call<FCMTokenResponse> call = ApiClient.getApiService().registerFCMToken(authToken, request);
-
-        call.enqueue(new Callback<FCMTokenResponse>() {
-            @Override
-            public void onResponse(Call<FCMTokenResponse> call, Response<FCMTokenResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    Log.d(TAG, "FCM token registered successfully: " + response.body().getMessage());
-                } else {
-                    Log.e(TAG, "Failed to register FCM token: " + response.code());
-                }
-            }
-
-            @Override
-            public void onFailure(Call<FCMTokenResponse> call, Throwable t) {
-                Log.e(TAG, "Error registering FCM token", t);
-            }
-        });
+        FirebaseFirestore.getInstance().collection("users")
+            .document(user.getUid())
+            .update("fcm_token", fcmToken)
+            .addOnSuccessListener(aVoid -> Log.d(TAG, "FCM token registered in Firestore"))
+            .addOnFailureListener(e -> Log.e(TAG, "Failed to register FCM token in Firestore", e));
     }
 
     /**
-     * Update user location on backend
+     * Update user location on Firestore
      */
     public static void updateLocation(Context context, String email, double latitude, double longitude) {
-        TokenManager tokenManager = new TokenManager(context);
-        String authToken = tokenManager.getAuthToken();
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        FirebaseUser user = auth.getCurrentUser();
 
-        if (authToken == null) {
-            Log.w(TAG, "No auth token available");
+        if (user == null) {
+            Log.w(TAG, "No Firebase user available");
             return;
         }
 
-        // Note: email is not used in the request body as per ApiService definition,
-        // but might be useful for logging or if the API changes.
-        // The endpoint uses Authorization header to identify the user.
+        Map<String, Object> locationData = new HashMap<>();
+        locationData.put("latitude", latitude);
+        locationData.put("longitude", longitude);
+        locationData.put("location_updated_at", FieldValue.serverTimestamp());
 
-        app.hub.api.UpdateLocationRequest request = new app.hub.api.UpdateLocationRequest(latitude, longitude);
-
-        Call<app.hub.api.UpdateLocationResponse> call = ApiClient.getApiService().updateLocation(authToken, request);
-
-        call.enqueue(new Callback<app.hub.api.UpdateLocationResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.UpdateLocationResponse> call,
-                    Response<app.hub.api.UpdateLocationResponse> response) {
-                if (response.isSuccessful()) {
-                    Log.d(TAG, "Location updated successfully");
-                } else {
-                    Log.e(TAG, "Failed to update location: " + response.code());
-                }
-            }
-
-            @Override
-            public void onFailure(Call<app.hub.api.UpdateLocationResponse> call, Throwable t) {
-                Log.e(TAG, "Error updating location", t);
-            }
-        });
+        FirebaseFirestore.getInstance().collection("users")
+            .document(user.getUid())
+            .update(locationData)
+            .addOnSuccessListener(aVoid -> Log.d(TAG, "Location updated in Firestore"))
+            .addOnFailureListener(e -> Log.e(TAG, "Failed to update location in Firestore", e));
     }
 }

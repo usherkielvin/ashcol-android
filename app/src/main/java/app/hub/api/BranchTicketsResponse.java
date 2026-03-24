@@ -1,19 +1,18 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public class BranchTicketsResponse {
-    @SerializedName("success")
+    
     private boolean success;
     
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("branch")
+    
     private BranchInfo branch;
     
-    @SerializedName("tickets")
+    
     private List<Ticket> tickets;
 
     public boolean isSuccess() {
@@ -33,13 +32,13 @@ public class BranchTicketsResponse {
     }
 
     public static class BranchInfo {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("name")
+        
         private String name;
         
-        @SerializedName("location")
+        
         private String location;
 
         public int getId() {
@@ -56,55 +55,55 @@ public class BranchTicketsResponse {
     }
 
     public static class Ticket {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("ticket_id")
+        
         private String ticketId;
         
-        @SerializedName("title")
+        
         private String title;
         
-        @SerializedName("description")
+        
         private String description;
         
-        @SerializedName("service_type")
+        
         private String serviceType;
         
-        @SerializedName("amount")
+        
         private double amount;
         
-        @SerializedName("address")
+        
         private String address;
         
-        @SerializedName("contact")
+        
         private String contact;
         
-        @SerializedName("preferred_date")
+        
         private String preferredDate;
         
-        @SerializedName("status")
+        
         private String status;
         
-        @SerializedName("status_detail")
+        
         private String statusDetail;
         
-        @SerializedName("status_color")
+        
         private String statusColor;
         
-        @SerializedName("customer_name")
+        
         private String customerName;
         
-        @SerializedName("assigned_staff")
+        
         private String assignedStaff;
         
-        @SerializedName("image_path")
+        
         private String imagePath;
         
-        @SerializedName("created_at")
+        
         private String createdAt;
         
-        @SerializedName("updated_at")
+        
         private String updatedAt;
 
         public int getId() {

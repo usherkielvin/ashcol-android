@@ -1,13 +1,12 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public class EmployeeScheduleResponse {
-    @SerializedName("success")
+    
     private boolean success;
 
-    @SerializedName("tickets")
+    
     private List<ScheduledTicket> tickets;
 
     public boolean isSuccess() {
@@ -27,40 +26,40 @@ public class EmployeeScheduleResponse {
     }
 
     public static class ScheduledTicket {
-        @SerializedName("ticket_id")
+        
         private String ticketId;
 
-        @SerializedName("title")
+        
         private String title;
 
-        @SerializedName("description")
+        
         private String description;
 
-        @SerializedName("scheduled_date")
+        
         private String scheduledDate;
 
-        @SerializedName("scheduled_time")
+        
         private String scheduledTime;
 
-        @SerializedName("schedule_notes")
+        
         private String scheduleNotes;
 
-        @SerializedName("status")
+        
         private String status;
 
-        @SerializedName("status_color")
+        
         private String statusColor;
 
-        @SerializedName("customer_name")
+        
         private String customerName;
 
-        @SerializedName("address")
+        
         private String address;
 
-        @SerializedName("service_type")
+        
         private String serviceType;
 
-        @SerializedName("branch")
+        
         private String branch;
 
         public String getTicketId() {

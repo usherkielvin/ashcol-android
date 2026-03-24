@@ -37,8 +37,6 @@ import java.util.Date;
 import java.util.Locale;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.CompleteWorkRequest;
 import app.hub.api.CompleteWorkResponse;
 import app.hub.api.TicketDetailResponse;
@@ -47,9 +45,6 @@ import app.hub.api.UpdateTicketStatusRequest;
 import app.hub.api.UpdateTicketStatusResponse;
 import app.hub.map.EmployeeMapActivity;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class EmployeeWorkFragment extends Fragment implements OnMapReadyCallback {
 

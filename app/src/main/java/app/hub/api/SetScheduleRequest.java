@@ -1,18 +1,17 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class SetScheduleRequest {
-    @SerializedName("scheduled_date")
+    
     private String scheduledDate;
     
-    @SerializedName("scheduled_time")
+    
     private String scheduledTime;
     
-    @SerializedName("schedule_notes")
+    
     private String scheduleNotes;
     
-    @SerializedName("assigned_staff_id")
+    
     private int assignedStaffId;
 
     public String getScheduledDate() {

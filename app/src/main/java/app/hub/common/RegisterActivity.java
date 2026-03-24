@@ -1,8 +1,6 @@
 package app.hub.common;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 
 import app.hub.api.GoogleSignInRequest;
 import app.hub.api.GoogleSignInResponse;
@@ -49,9 +47,6 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.Arrays;
 
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 // Activity for user registration - Multi-step flow container
 public class RegisterActivity extends AppCompatActivity {
@@ -647,41 +642,23 @@ public class RegisterActivity extends AppCompatActivity {
 
 	// Update password for Google user (set initial password)
 	public void updateGoogleUserPassword(String password, String confirmPassword) {
-		String token = tokenManager.getToken();
-		if (token == null || token.isEmpty()) {
-			Log.w(TAG, "updateGoogleUserPassword: missing auth token");
+		com.google.firebase.auth.FirebaseUser user = com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+		if (user == null) {
+			Log.w(TAG, "updateGoogleUserPassword: missing auth user");
 			return;
 		}
 
-		Log.d(TAG, "Updating password for Google user");
-
-		ApiService apiService = ApiClient.getApiService();
-		SetInitialPasswordRequest request = new SetInitialPasswordRequest(password, confirmPassword);
-
-		Call<SetInitialPasswordResponse> call = apiService.setInitialPassword(token, request);
-		call.enqueue(new Callback<>() {
-			@Override
-			public void onResponse(@NonNull Call<SetInitialPasswordResponse> call,
-					@NonNull Response<SetInitialPasswordResponse> response) {
-				if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-					Log.d(TAG, "Password updated successfully for Google user");
-
-					// Navigate to Account Created
+		Log.d(TAG, "Updating password for Firebase user");
+		user.updatePassword(password)
+			.addOnCompleteListener(task -> {
+				if (task.isSuccessful()) {
+					Log.d(TAG, "Password updated successfully for user");
 					showAccountCreatedFragment();
 				} else {
-					String errorMsg = "Failed to set password. Please try again.";
-					if (response.body() != null && response.body().getMessage() != null) {
-						errorMsg = response.body().getMessage();
-					}
-					Log.e(TAG, "setInitialPassword failed: " + errorMsg);
+					Log.e(TAG, "updatePassword failed", task.getException());
+					Toast.makeText(this, "Failed to set password: " + task.getException().getMessage(), Toast.LENGTH_LONG).show();
 				}
-			}
-
-			@Override
-			public void onFailure(@NonNull Call<SetInitialPasswordResponse> call, @NonNull Throwable t) {
-				Log.e(TAG, "Error updating password: " + t.getMessage(), t);
-			}
-		});
+			});
 	}
 
 	// Register/login Google user

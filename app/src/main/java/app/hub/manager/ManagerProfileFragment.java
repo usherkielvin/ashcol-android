@@ -35,13 +35,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.LogoutResponse;
 import app.hub.api.UserResponse;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class ManagerProfileFragment extends Fragment {
 

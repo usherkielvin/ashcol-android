@@ -24,8 +24,6 @@ import androidx.fragment.app.Fragment;
 import com.google.android.material.imageview.ShapeableImageView;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.LogoutResponse;
 import app.hub.api.ProfilePhotoResponse;
 import app.hub.api.UserResponse;
@@ -43,12 +41,6 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.RequestBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class AdminProfileFragment extends Fragment {
 

@@ -1,19 +1,18 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public class BranchResponse {
-    @SerializedName("success")
+    
     private boolean success;
     
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("branches")
+    
     private List<Branch> branches;
     
-    @SerializedName("total_branches")
+    
     private int totalBranches;
 
     public boolean isSuccess() {
@@ -49,31 +48,31 @@ public class BranchResponse {
     }
 
     public static class Branch {
-        @SerializedName("id")
+        
         private int id;
         
-        @SerializedName("name")
+        
         private String name;
         
-        @SerializedName("location")
+        
         private String location;
         
-        @SerializedName("address")
+        
         private String address;
         
-        @SerializedName("latitude")
+        
         private double latitude;
         
-        @SerializedName("longitude")
+        
         private double longitude;
         
-        @SerializedName("manager")
+        
         private String manager;
         
-        @SerializedName("employee_count")
+        
         private int employeeCount;
         
-        @SerializedName("description")
+        
         private String description;
 
         public int getId() { return id; }

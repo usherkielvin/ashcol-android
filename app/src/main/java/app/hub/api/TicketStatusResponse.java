@@ -1,15 +1,14 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class TicketStatusResponse {
-    @SerializedName("success")
+    
     private boolean success;
     
-    @SerializedName("message")
+    
     private String message;
     
-    @SerializedName("ticket")
+    
     private TicketStatusData ticket;
 
     public boolean isSuccess() {
@@ -37,16 +36,16 @@ public class TicketStatusResponse {
     }
 
     public static class TicketStatusData {
-        @SerializedName("ticket_id")
+        
         private String ticketId;
         
-        @SerializedName("status")
+        
         private String status;
         
-        @SerializedName("status_color")
+        
         private String statusColor;
         
-        @SerializedName("assigned_staff")
+        
         private String assignedStaff;
 
         public String getTicketId() { return ticketId; }

@@ -3,13 +3,6 @@ package app.hub.util;
 import android.content.Context;
 import android.util.Log;
 
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
-import app.hub.api.UpdateLocationRequest;
-import app.hub.api.UpdateLocationResponse;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class UserLocationManager {
     private static final String TAG = "UserLocationManager";
@@ -58,42 +51,29 @@ public class UserLocationManager {
     }
 
     private void updateLocationOnServer(String token, String location, LocationUpdateCallback callback) {
-        ApiService apiService = ApiClient.getApiService();
-        UpdateLocationRequest request = new UpdateLocationRequest(location);
-        Call<UpdateLocationResponse> call = apiService.updateLocation(token, request);
+        com.google.firebase.auth.FirebaseAuth auth = com.google.firebase.auth.FirebaseAuth.getInstance();
+        com.google.firebase.auth.FirebaseUser user = auth.getCurrentUser();
+        
+        if (user == null) {
+            if (callback != null) callback.onLocationUpdateFailed("User not authenticated");
+            return;
+        }
 
-        call.enqueue(new Callback<UpdateLocationResponse>() {
-            @Override
-            public void onResponse(Call<UpdateLocationResponse> call, Response<UpdateLocationResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    UpdateLocationResponse locationResponse = response.body();
-                    if (locationResponse.isSuccess()) {
-                        Log.d(TAG, "Location updated successfully: " + location);
-                        if (callback != null) {
-                            callback.onLocationUpdated(location);
-                        }
-                    } else {
-                        Log.e(TAG, "Location update failed: " + locationResponse.getMessage());
-                        if (callback != null) {
-                            callback.onLocationUpdateFailed("Server error: " + locationResponse.getMessage());
-                        }
-                    }
-                } else {
-                    Log.e(TAG, "Location update HTTP error: " + response.code());
-                    if (callback != null) {
-                        callback.onLocationUpdateFailed("Network error");
-                    }
-                }
-            }
-
-            @Override
-            public void onFailure(Call<UpdateLocationResponse> call, Throwable t) {
-                Log.e(TAG, "Location update network failure: " + t.getMessage());
+        com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users")
+            .document(user.getUid())
+            .update("location", location)
+            .addOnSuccessListener(aVoid -> {
+                Log.d(TAG, "Location updated in Firestore: " + location);
                 if (callback != null) {
-                    callback.onLocationUpdateFailed("Network error: " + t.getMessage());
+                    callback.onLocationUpdated(location);
                 }
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Firestore update failed: " + e.getMessage());
+                if (callback != null) {
+                    callback.onLocationUpdateFailed("Database error: " + e.getMessage());
+                }
+            });
     }
 
     public void cleanup() {

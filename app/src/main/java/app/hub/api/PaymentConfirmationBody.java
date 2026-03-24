@@ -1,18 +1,17 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 
 public class PaymentConfirmationBody {
-    @SerializedName("ticket_id")
+    
     private String ticketId;
 
-    @SerializedName("customer_id")
+    
     private int customerId;
 
-    @SerializedName("payment_method")
+    
     private String paymentMethod;
 
-    @SerializedName("amount")
+    
     private double amount;
 
     public PaymentConfirmationBody(String ticketId, int customerId, String paymentMethod, double amount) {

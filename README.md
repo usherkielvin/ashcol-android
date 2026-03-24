@@ -97,7 +97,7 @@ The backend is powered entirely by Firebase (Firestore, Authentication, Cloud Fu
 ```
 app/src/main/java/app/hub/
 ├── admin/          # Admin dashboard, branches, managers, employees
-├── api/            # Retrofit API models and service interfaces
+├── api/            # Legacy data models (Pure POJO)
 ├── common/         # Shared activities, Firebase managers, auth
 ├── customer/       # Customer dashboard, tickets, payments
 ├── employee/       # Technician/employee views

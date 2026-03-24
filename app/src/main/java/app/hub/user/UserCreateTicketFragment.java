@@ -35,16 +35,11 @@ import java.util.Map;
 import java.util.TimeZone;
 
 import app.hub.R;
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.CreateTicketRequest;
 import app.hub.api.CreateTicketResponse;
 import app.hub.api.UserResponse;
 import app.hub.map.MapSelectionActivity;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 public class UserCreateTicketFragment extends Fragment {
 

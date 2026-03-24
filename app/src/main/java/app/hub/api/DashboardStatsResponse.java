@@ -1,19 +1,18 @@
 package app.hub.api;
 
-import com.google.gson.annotations.SerializedName;
 import java.util.List;
 
 public class DashboardStatsResponse {
-    @SerializedName("success")
+    
     private boolean success;
 
-    @SerializedName("stats")
+    
     private Stats stats;
 
-    @SerializedName("recent_tickets")
+    
     private List<RecentTicket> recentTickets;
 
-    @SerializedName("message")
+    
     private String message;
 
     // Getters and setters
@@ -51,19 +50,19 @@ public class DashboardStatsResponse {
 
     // Stats class for workload statistics
     public static class Stats {
-        @SerializedName("total_tickets")
+        
         private int totalTickets;
 
-        @SerializedName("pending")
+        
         private int pending;
 
-        @SerializedName("in_progress")
+        
         private int inProgress;
 
-        @SerializedName("completed")
+        
         private int completed;
 
-        @SerializedName("cancelled")
+        
         private int cancelled;
 
         public int getTotalTickets() {
@@ -109,28 +108,28 @@ public class DashboardStatsResponse {
 
     // RecentTicket class for recent activity
     public static class RecentTicket {
-        @SerializedName("ticket_id")
+        
         private String ticketId;
 
-        @SerializedName("status")
+        
         private String status;
 
-        @SerializedName("status_color")
+        
         private String statusColor;
 
-        @SerializedName("customer_name")
+        
         private String customerName;
 
-        @SerializedName("service_type")
+        
         private String serviceType;
 
-        @SerializedName("description")
+        
         private String description;
 
-        @SerializedName("address")
+        
         private String address;
 
-        @SerializedName("created_at")
+        
         private String createdAt;
 
         public String getTicketId() {

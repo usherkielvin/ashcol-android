@@ -6,14 +6,9 @@ import android.util.Log;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.hub.api.ApiClient;
-import app.hub.api.ApiService;
 import app.hub.api.EmployeeScheduleResponse;
 import app.hub.api.TicketListResponse;
 import app.hub.util.TokenManager;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 
 /**
  * Centralized data manager for employee/technician
