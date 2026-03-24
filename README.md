@@ -135,7 +135,3 @@ For Google Sign-In, generate your SHA-1 and register it in the Firebase Console:
 | Backend & Database | Dizon S. Dizon |
 
 **Institution:** NU MOA — Application Development Final Project
-
----
-
-<p align="center">Built with ❤️ by the NU MOA APPDEV Team</p>
