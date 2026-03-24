@@ -6,6 +6,7 @@ import android.util.Log;
 import java.util.ArrayList;
 import java.util.List;
 
+
 import app.hub.api.DashboardStatsResponse;
 import app.hub.api.EmployeeResponse;
 import app.hub.api.TicketListResponse;
@@ -15,6 +16,11 @@ import app.hub.util.TokenManager;
  * Centralized data manager for manager dashboard
  * Loads all data at startup so tabs are instantly ready
  */
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 public class ManagerDataManager {
     private static final String TAG = "ManagerDataManager";
 
@@ -186,43 +192,28 @@ public class ManagerDataManager {
             activeCallbacks.add(callback);
         }
 
-        TokenManager tokenManager = new TokenManager(context);
-        String email = tokenManager.getEmail();
-
-        if (email == null) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             isLoading = false;
             notifyLoadError("Not authenticated");
             return;
         }
 
-        // Fetch Manager Profile from Firestore to determine their Branch
-        com.google.firebase.auth.FirebaseAuth auth = com.google.firebase.auth.FirebaseAuth.getInstance();
-        com.google.firebase.auth.FirebaseUser user = auth.getCurrentUser();
-        
-        if (user == null) {
-            isLoading = false;
-            notifyLoadError("Firebase User not found");
-            return;
-        }
-
-        com.google.firebase.firestore.FirebaseFirestore firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance();
-        firestore.collection("users").document(user.getUid()).get()
+        FirebaseFirestore.getInstance().collection("users").document(user.getUid()).get()
             .addOnSuccessListener(documentSnapshot -> {
                 if (documentSnapshot.exists()) {
                     cachedBranchName = documentSnapshot.getString("branch");
                     if (cachedBranchName == null || cachedBranchName.trim().isEmpty()) {
                         cachedBranchName = "No Branch Assigned";
                     }
-                    
                     Log.d(TAG, "Manager branch identified: " + cachedBranchName);
-                    
-                    // Now load components based on branch
+
+                    // Now load all data components for this branch
                     loadEmployees(cachedBranchName, null);
                     loadTickets(cachedBranchName, null);
-                    loadDashboardStats(cachedBranchName, null);
                 } else {
                     isLoading = false;
-                    notifyLoadError("Manager document not found in Firestore");
+                    notifyLoadError("Manager profile not found");
                 }
             })
             .addOnFailureListener(e -> {
@@ -310,6 +301,9 @@ public class ManagerDataManager {
                 Log.d(TAG, "Tickets loaded from Firebase: " + cachedTickets.size());
                 notifyTicketListeners();
 
+                // After tickets are loaded, calculate dashboard stats
+                loadDashboardStats(branch, null);
+
                 for (DataLoadCallback cb : new ArrayList<>(activeCallbacks)) {
                     cb.onTicketsLoaded(cachedTickets);
                 }
@@ -323,6 +317,8 @@ public class ManagerDataManager {
                 Log.e(TAG, "Ticket fetch failed: " + e.getMessage());
                 cachedTickets = new ArrayList<>();
                 notifyTicketListeners();
+                // Also trigger stats calculation and completion check on failure
+                loadDashboardStats(branch, null);
                 for (DataLoadCallback cb : new ArrayList<>(activeCallbacks)) cb.onTicketsLoaded(cachedTickets);
                 if (callback != null) callback.onTicketsLoaded(cachedTickets);
                 checkLoadComplete();

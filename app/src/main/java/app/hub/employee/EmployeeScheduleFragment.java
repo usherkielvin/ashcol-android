@@ -20,6 +20,11 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import com.facebook.shimmer.ShimmerFrameLayout;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -337,9 +342,8 @@ public class EmployeeScheduleFragment extends Fragment {
     }
 
     private void loadScheduleData(boolean preserveUi) {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(getContext(), "You are not logged in.", Toast.LENGTH_SHORT).show();
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             if (swipeRefreshLayout != null) {
                 swipeRefreshLayout.setRefreshing(false);
             }
@@ -347,59 +351,65 @@ public class EmployeeScheduleFragment extends Fragment {
         }
 
         if (!preserveUi) {
-            if (swipeRefreshLayout == null || !swipeRefreshLayout.isRefreshing()) {
-                progressBar.setVisibility(View.VISIBLE);
+            if (shimmerSchedule != null) {
+                shimmerSchedule.setVisibility(View.VISIBLE);
+                shimmerSchedule.startShimmer();
             }
-            setLoadingState(true);
+            if (rvCalendarGrid != null) rvCalendarGrid.setVisibility(View.GONE);
+            if (dailyListContainer != null) dailyListContainer.setVisibility(View.GONE);
         }
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<EmployeeScheduleResponse> call = apiService.getEmployeeSchedule("Bearer " + token);
+        android.util.Log.d("EmployeeSchedule", "Loading schedules from Firestore...");
 
-        call.enqueue(new Callback<EmployeeScheduleResponse>() {
-            @Override
-            public void onResponse(Call<EmployeeScheduleResponse> call, Response<EmployeeScheduleResponse> response) {
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (!isAdded()) return;
+                
                 if (swipeRefreshLayout != null) {
                     swipeRefreshLayout.setRefreshing(false);
                 }
-                progressBar.setVisibility(View.GONE);
+                if (shimmerSchedule != null) {
+                    shimmerSchedule.stopShimmer();
+                    shimmerSchedule.setVisibility(View.GONE);
+                }
+                if (rvCalendarGrid != null) rvCalendarGrid.setVisibility(View.VISIBLE);
+                if (dailyListContainer != null) dailyListContainer.setVisibility(View.VISIBLE);
 
-                if (response.isSuccessful() && response.body() != null) {
-                    EmployeeScheduleResponse scheduleResponse = response.body();
-                    android.util.Log.d("EmployeeSchedule", "API Success, Success: " + scheduleResponse.isSuccess());
+                scheduledTicketsMap.clear();
+                allBufferedTickets.clear();
 
-                    if (scheduleResponse.getTickets() != null) {
-                        android.util.Log.d("EmployeeSchedule",
-                                "Ticket count: " + scheduleResponse.getTickets().size());
-                    } else {
-                        android.util.Log.d("EmployeeSchedule", "Tickets list is null");
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    EmployeeScheduleResponse.ScheduledTicket ticket = doc.toObject(EmployeeScheduleResponse.ScheduledTicket.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        String dateKey = ticket.getScheduledDate();
+                        if (dateKey != null) {
+                            String normalized = normalizeDateKey(dateKey);
+                            if (!scheduledTicketsMap.containsKey(normalized)) {
+                                scheduledTicketsMap.put(normalized, new ArrayList<>());
+                            }
+                            scheduledTicketsMap.get(normalized).add(ticket);
+                        }
                     }
-
-                    if (scheduleResponse.isSuccess()) {
-                        processScheduleData(scheduleResponse.getTickets());
-                    } else {
-                        processScheduleData(new ArrayList<>());
-                    }
-                } else {
-                    android.util.Log.e("EmployeeSchedule", "API Error: " + response.code());
-                    processScheduleData(new ArrayList<>());
                 }
 
-                setLoadingState(false);
-            }
-
-            @Override
-            public void onFailure(Call<EmployeeScheduleResponse> call, Throwable t) {
-                if (swipeRefreshLayout != null) {
-                    swipeRefreshLayout.setRefreshing(false);
-                }
-                progressBar.setVisibility(View.GONE);
-                Toast.makeText(getContext(), "Failed to load schedule: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                showEmptyState();
+                allBufferedTickets.putAll(scheduledTicketsMap);
                 updateCalendar();
-                setLoadingState(false);
-            }
-        });
+                updateDailyListForDateKey(selectedDateKey);
+            })
+            .addOnFailureListener(e -> {
+                if (!isAdded()) return;
+                if (swipeRefreshLayout != null) {
+                    swipeRefreshLayout.setRefreshing(false);
+                }
+                if (shimmerSchedule != null) {
+                    shimmerSchedule.stopShimmer();
+                    shimmerSchedule.setVisibility(View.GONE);
+                }
+                android.util.Log.e("EmployeeSchedule", "Error loading schedules: " + e.getMessage());
+            });
     }
 
     private void processScheduleData(List<EmployeeScheduleResponse.ScheduledTicket> tickets) {

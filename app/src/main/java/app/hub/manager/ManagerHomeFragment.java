@@ -196,30 +196,29 @@ public class ManagerHomeFragment extends Fragment implements ManagerDataManager.
             }
 
             @Override
-            public void onTicketsLoaded(List<TicketListResponse.TicketItem> tickets) {}
+            public void onTicketsLoaded(List<TicketListResponse.TicketItem> tickets) {
+                // This is now handled by onDashboardStatsLoaded
+            }
 
             @Override
-            public void onDashboardStatsLoaded(DashboardStatsResponse.Stats stats,
-                    List<DashboardStatsResponse.RecentTicket> recentTickets) {
+            public void onDashboardStatsLoaded(DashboardStatsResponse.Stats stats, List<DashboardStatsResponse.RecentTicket> recentTickets) {
                 if (getActivity() != null) {
                     getActivity().runOnUiThread(() -> {
                         updateDashboardStats(stats);
-                        if (recentTickets != null && !recentTickets.isEmpty()) {
-                            recentActivityAdapter.setRecentTickets(limitRecentTickets(recentTickets));
-                        } else {
-                            List<DashboardStatsResponse.RecentTicket> fallback = buildRecentTicketsFromTickets(
-                                    ManagerDataManager.getCachedTickets(), RECENT_TICKETS_LIMIT);
-                            recentActivityAdapter.setRecentTickets(fallback);
-                        }
+                        recentActivityAdapter.setRecentTickets(limitRecentTickets(recentTickets));
                     });
                 }
             }
 
             @Override
-            public void onLoadComplete() {}
+            public void onLoadComplete() {
+                // All data is loaded
+            }
 
             @Override
-            public void onLoadError(String error) {}
+            public void onLoadError(String error) {
+                // Handle error
+            }
         });
     }
 

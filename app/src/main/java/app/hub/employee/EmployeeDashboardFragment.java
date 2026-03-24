@@ -8,6 +8,11 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.ArrayList;
@@ -185,108 +190,85 @@ public class EmployeeDashboardFragment extends Fragment {
      * and schedules
      */
     private void loadAllTickets() {
-        if (!isAdded() || getContext() == null)
-            return;
-
-        TokenManager tokenManager = new TokenManager(requireContext());
-        String token = tokenManager.getToken();
-        if (token == null)
-            return;
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getEmployeeTickets("Bearer " + token);
-
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(Call<TicketListResponse> call, Response<TicketListResponse> response) {
-                if (!isAdded() || getContext() == null)
-                    return;
-
-                // Stop refresh animation
-                if (swipeRefreshLayout != null) {
-                    swipeRefreshLayout.setRefreshing(false);
-                }
-
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    List<TicketListResponse.TicketItem> allTickets = response.body().getTickets();
-                    List<TicketListResponse.TicketItem> safeTickets = allTickets != null ? allTickets
-                            : new ArrayList<>();
-
-                    // Cache all tickets
-                    cachedTodayWork = new ArrayList<>(safeTickets);
-                    cachedScheduleTickets = new ArrayList<>(safeTickets);
-
-                    // Display both sections
-                    displayTodayWork(safeTickets);
-                    displayAssignedSchedules(safeTickets);
-                } else {
-                    displayTodayWork(new ArrayList<>());
-                    displayAssignedSchedules(new ArrayList<>());
-                }
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || !isAdded()) {
+            if (swipeRefreshLayout != null) {
+                swipeRefreshLayout.setRefreshing(false);
             }
+            return;
+        }
 
-            @Override
-            public void onFailure(Call<TicketListResponse> call, Throwable t) {
-                if (!isAdded() || getContext() == null)
-                    return;
-
-                // Stop refresh animation
+        android.util.Log.d("EmployeeDashboard", "Loading all tickets from Firestore...");
+        
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (!isAdded()) return;
+                
                 if (swipeRefreshLayout != null) {
                     swipeRefreshLayout.setRefreshing(false);
                 }
 
+                List<TicketListResponse.TicketItem> tickets = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        tickets.add(ticket);
+                    }
+                }
+                
+                cachedTodayWork = new ArrayList<>(tickets);
+                cachedScheduleTickets = new ArrayList<>(tickets);
+
+                displayTodayWork(tickets);
+                displayAssignedSchedules(tickets);
+            })
+            .addOnFailureListener(e -> {
+                if (!isAdded()) return;
+                if (swipeRefreshLayout != null) {
+                    swipeRefreshLayout.setRefreshing(false);
+                }
                 displayTodayWork(new ArrayList<>());
                 displayAssignedSchedules(new ArrayList<>());
-            }
-        });
+            });
     }
 
     private void loadAssignedSchedules() {
-        if (!isAdded() || getContext() == null)
-            return;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || !isAdded()) return;
 
-        TokenManager tokenManager = new TokenManager(requireContext());
-        String token = tokenManager.getToken();
-        if (token == null)
-            return;
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getEmployeeTickets("Bearer " + token);
-
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(Call<TicketListResponse> call, Response<TicketListResponse> response) {
-                if (!isAdded() || getContext() == null)
-                    return;
-
-                // Stop refresh animation
+        android.util.Log.d("EmployeeDashboard", "Loading schedules from Firestore...");
+        
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (!isAdded()) return;
+                
                 if (swipeRefreshLayout != null) {
                     swipeRefreshLayout.setRefreshing(false);
                 }
 
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    List<TicketListResponse.TicketItem> tickets = response.body().getTickets();
-                    List<TicketListResponse.TicketItem> safeTickets = tickets != null ? tickets : new ArrayList<>();
-                    cachedScheduleTickets = new ArrayList<>(safeTickets);
-                    displayAssignedSchedules(safeTickets);
-                } else {
-                    displayAssignedSchedules(new ArrayList<>());
+                List<TicketListResponse.TicketItem> tickets = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        tickets.add(ticket);
+                    }
                 }
-            }
-
-            @Override
-            public void onFailure(Call<TicketListResponse> call, Throwable t) {
-                if (!isAdded() || getContext() == null)
-                    return;
-
-                // Stop refresh animation
+                cachedScheduleTickets = new ArrayList<>(tickets);
+                displayAssignedSchedules(tickets);
+            })
+            .addOnFailureListener(e -> {
+                if (!isAdded()) return;
                 if (swipeRefreshLayout != null) {
                     swipeRefreshLayout.setRefreshing(false);
                 }
-
                 displayAssignedSchedules(new ArrayList<>());
-            }
-        });
+            });
     }
 
     private void displayAssignedSchedules(List<TicketListResponse.TicketItem> tickets) {
@@ -339,51 +321,39 @@ public class EmployeeDashboardFragment extends Fragment {
     }
 
     private void loadTodayWork() {
-        if (!isAdded() || getContext() == null)
-            return;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || !isAdded()) return;
 
-        TokenManager tokenManager = new TokenManager(requireContext());
-        String token = tokenManager.getToken();
-        if (token == null)
-            return;
+        android.util.Log.d("EmployeeDashboard", "Loading today's work from Firestore...");
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getEmployeeTickets("Bearer " + token);
-
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(Call<TicketListResponse> call, Response<TicketListResponse> response) {
-                if (!isAdded() || getContext() == null)
-                    return;
-
-                // Stop refresh animation
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (!isAdded()) return;
+                
                 if (swipeRefreshLayout != null) {
                     swipeRefreshLayout.setRefreshing(false);
                 }
 
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    List<TicketListResponse.TicketItem> tickets = response.body().getTickets();
-                    List<TicketListResponse.TicketItem> safeTickets = tickets != null ? tickets : new ArrayList<>();
-                    cachedTodayWork = new ArrayList<>(safeTickets);
-                    displayTodayWork(safeTickets);
-                } else {
-                    displayTodayWork(new ArrayList<>());
+                List<TicketListResponse.TicketItem> tickets = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        tickets.add(ticket);
+                    }
                 }
-            }
-
-            @Override
-            public void onFailure(Call<TicketListResponse> call, Throwable t) {
-                if (!isAdded() || getContext() == null)
-                    return;
-
-                // Stop refresh animation
+                cachedTodayWork = new ArrayList<>(tickets);
+                displayTodayWork(tickets);
+            })
+            .addOnFailureListener(e -> {
+                if (!isAdded()) return;
                 if (swipeRefreshLayout != null) {
                     swipeRefreshLayout.setRefreshing(false);
                 }
-
                 displayTodayWork(new ArrayList<>());
-            }
-        });
+            });
     }
 
     private void displayTodayWork(List<TicketListResponse.TicketItem> tickets) {

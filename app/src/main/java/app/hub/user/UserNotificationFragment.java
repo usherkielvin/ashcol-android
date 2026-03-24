@@ -44,6 +44,11 @@ import app.hub.api.TicketListResponse;
 import app.hub.common.FirestoreManager;
 import app.hub.util.TokenManager;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 /**
  * Activity tab - shows ongoing ticket with live technician tracking.
  */
@@ -154,11 +159,9 @@ public class UserNotificationFragment extends Fragment implements OnMapReadyCall
         if (isLoadingTickets) {
             return;
         }
-        android.util.Log.d("UserNotification", "Loading tickets...");
-
-        String token = tokenManager.getToken();
-        if (token == null) {
-            android.util.Log.e("UserNotification", "Token is null");
+        
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             showEmptyState();
             if (swipeRefreshLayout != null)
                 swipeRefreshLayout.setRefreshing(false);
@@ -171,71 +174,52 @@ public class UserNotificationFragment extends Fragment implements OnMapReadyCall
             swipeRefreshLayout.setRefreshing(true);
         }
 
-        String authToken = token.startsWith("Bearer ") ? token : "Bearer " + token;
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getTickets(authToken);
+        android.util.Log.d("UserNotification", "Loading tickets from Firestore for user: " + user.getUid());
 
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(Call<TicketListResponse> call, Response<TicketListResponse> response) {
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("customer_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 isLoadingTickets = false;
                 if (swipeRefreshLayout != null)
                     swipeRefreshLayout.setRefreshing(false);
 
-                android.util.Log.d("UserNotification",
-                        "API Response - Code: " + response.code() + ", Success: " + response.isSuccessful());
-
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    List<TicketListResponse.TicketItem> tickets = response.body().getTickets();
-                    android.util.Log.d("UserNotification", "Total tickets: " + (tickets != null ? tickets.size() : 0));
-
-                    if (tickets != null) {
-                        for (TicketListResponse.TicketItem ticket : tickets) {
-                            android.util.Log.d("UserNotification",
-                                    "Ticket: " + ticket.getTicketId() + " - Status: " + ticket.getStatus());
-                        }
+                List<TicketListResponse.TicketItem> tickets = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        tickets.add(ticket);
                     }
+                }
 
-                    TicketListResponse.TicketItem inProgress = findInProgressTicket(tickets);
-                    TicketListResponse.TicketItem pendingPaymentTicket = findTicketById(tickets,
-                            pendingPaymentTicketId);
+                android.util.Log.d("UserNotification", "Total tickets from Firestore: " + tickets.size());
 
-                    if (inProgress != null) {
-                        android.util.Log.d("UserNotification", "Found in-progress ticket: " + inProgress.getTicketId());
-                        currentTicket = inProgress;
-                        showTrackingView();
-                    } else if (pendingPaymentTicket != null) {
-                        android.util.Log.d("UserNotification", "Found pending payment ticket: "
-                                + pendingPaymentTicket.getTicketId());
-                        currentTicket = pendingPaymentTicket;
-                        showTrackingView();
-                    } else {
-                        android.util.Log.d("UserNotification", "No in-progress ticket found, showing empty state");
-                        showEmptyState();
-                    }
+                TicketListResponse.TicketItem inProgress = findInProgressTicket(tickets);
+                TicketListResponse.TicketItem pendingPaymentTicket = findTicketById(tickets,
+                        pendingPaymentTicketId);
+
+                if (inProgress != null) {
+                    android.util.Log.d("UserNotification", "Found in-progress ticket: " + inProgress.getTicketId());
+                    currentTicket = inProgress;
+                    showTrackingView();
+                } else if (pendingPaymentTicket != null) {
+                    android.util.Log.d("UserNotification", "Found pending payment ticket: "
+                            + pendingPaymentTicket.getTicketId());
+                    currentTicket = pendingPaymentTicket;
+                    showTrackingView();
                 } else {
-                    android.util.Log.e("UserNotification", "API response not successful or body is null");
-                    if (response.errorBody() != null) {
-                        try {
-                            String errorBody = response.errorBody().string();
-                            android.util.Log.e("UserNotification", "Error body: " + errorBody);
-                        } catch (Exception e) {
-                            android.util.Log.e("UserNotification", "Could not read error body", e);
-                        }
-                    }
+                    android.util.Log.d("UserNotification", "No in-progress ticket found, showing empty state");
                     showEmptyState();
                 }
-            }
-
-            @Override
-            public void onFailure(Call<TicketListResponse> call, Throwable t) {
+            })
+            .addOnFailureListener(e -> {
                 isLoadingTickets = false;
                 if (swipeRefreshLayout != null)
                     swipeRefreshLayout.setRefreshing(false);
                 showEmptyState();
-                android.util.Log.e("UserNotification", "Failed to load activity: " + t.getMessage(), t);
-            }
-        });
+                android.util.Log.e("UserNotification", "Failed to load tickets from Firestore: " + e.getMessage());
+            });
     }
 
     private void showTrackingView() {

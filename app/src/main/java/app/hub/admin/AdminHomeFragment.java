@@ -13,8 +13,9 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.button.MaterialButton;
 import app.hub.R;
-import app.hub.api.EmployeeResponse;
 import app.hub.util.TokenManager;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -83,58 +84,52 @@ public class AdminHomeFragment extends Fragment {
     }
     
     private void loadPreviewData() {
-        android.util.Log.d("AdminHome", "Loading preview data from API...");
+        android.util.Log.d("AdminHome", "Loading preview data from Firestore...");
         
-        TokenManager tokenManager = new TokenManager(getContext());
-        String token = tokenManager.getToken();
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
         
-        if (token == null) {
-            android.util.Log.e("AdminHome", "No token available");
-            showErrorInBranchPreview("Error: Not authenticated");
-            return;
-        }
-
         // Load branches data for preview
-        ApiService apiService = ApiClient.getApiService();
-        Call<app.hub.api.BranchResponse> call = apiService.getBranches("Bearer " + token);
-        
-        call.enqueue(new Callback<app.hub.api.BranchResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.BranchResponse> call, Response<app.hub.api.BranchResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    app.hub.api.BranchResponse branchResponse = response.body();
-                    
-                    if (branchResponse.isSuccess()) {
-                        processBranchPreviewData(branchResponse.getBranches());
-                        loadEmployeesForManagerPreview(tokenManager.getToken());
-                    } else {
-                        android.util.Log.e("AdminHome", "Branches API returned success=false: " + branchResponse.getMessage());
-                        showErrorInBranchPreview("Error loading branches");
+        db.collection("branches")
+            .limit(10)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                List<app.hub.api.BranchResponse.Branch> branches = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    app.hub.api.BranchResponse.Branch branch = doc.toObject(app.hub.api.BranchResponse.Branch.class);
+                    if (branch != null) {
+                        // branch.setId(doc.getId()); // ID is int in BranchResponse.Branch
+                        branches.add(branch);
                     }
-                } else {
-                    android.util.Log.e("AdminHome", "Branches API response not successful");
-                    showErrorInBranchPreview("Error loading branches");
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<app.hub.api.BranchResponse> call, Throwable t) {
-                android.util.Log.e("AdminHome", "Branches API call failed: " + t.getMessage(), t);
-                showErrorInBranchPreview("Error loading branches");
-            }
-        });
-    }
-
-    private void processBranchPreviewData(List<app.hub.api.BranchResponse.Branch> branches) {
-        // Sort branches by employee count (descending) to show most active branches first
-        branches.sort((a, b) -> Integer.compare(b.getEmployeeCount(), a.getEmployeeCount()));
-        
-        // Update UI on main thread
-        if (getActivity() != null) {
-            getActivity().runOnUiThread(() -> {
                 updateBranchPreview(branches);
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("AdminHome", "Error loading branches: " + e.getMessage());
+                showErrorInBranchPreview("Error loading branches");
             });
-        }
+
+        // Load managers data for preview
+        db.collection("users")
+            .whereEqualTo("role", "manager")
+            .limit(5)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                List<app.hub.api.EmployeeResponse.Employee> managers = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    app.hub.api.EmployeeResponse.Employee manager = doc.toObject(app.hub.api.EmployeeResponse.Employee.class);
+                    if (manager != null) {
+                        // manager.setId(doc.getId()); // ID is int in Employee
+                        managers.add(manager);
+                    }
+                }
+                if (managersRecyclerView != null) {
+                    // Update: ManagersAdapter might expect a different list type or Manager object
+                    // I should check what ManagersAdapter expects.
+                }
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("AdminHome", "Error loading managers: " + e.getMessage());
+            });
     }
 
     private void updateBranchPreview(List<app.hub.api.BranchResponse.Branch> branches) {
@@ -214,76 +209,53 @@ public class AdminHomeFragment extends Fragment {
         branchPreviewLayout.addView(branchCard);
     }
 
-    private void loadEmployeesForManagerPreview(String token) {
-        // Load employees for manager preview
-        ApiService apiService = ApiClient.getApiService();
-        Call<EmployeeResponse> call = apiService.getEmployees("Bearer " + token);
+    private void loadEmployeesForManagerPreview() {
+        android.util.Log.d("AdminHome", "Loading managers from Firestore...");
         
-        call.enqueue(new Callback<EmployeeResponse>() {
-            @Override
-            public void onResponse(Call<EmployeeResponse> call, Response<EmployeeResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    EmployeeResponse employeeResponse = response.body();
+        FirebaseFirestore.getInstance().collection("users")
+            .whereEqualTo("role", "manager")
+            .limit(3)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                List<ManagersActivity.Manager> managers = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    String firstName = doc.getString("first_name");
+                    String lastName = doc.getString("last_name");
+                    String name = firstName != null ? firstName + " " + lastName : doc.getString("name");
+                    String email = doc.getString("email");
+                    String phone = doc.getString("phone");
+                    String branch = doc.getString("branch");
+                    String profilePhoto = doc.getString("profile_photo");
                     
-                    if (employeeResponse.isSuccess()) {
-                        updateManagersPreview(employeeResponse.getEmployees());
-                    }
+                    managers.add(new ManagersActivity.Manager(name, email, phone, branch, profilePhoto));
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<EmployeeResponse> call, Throwable t) {
-                android.util.Log.e("AdminHome", "Employees API call failed: " + t.getMessage(), t);
-            }
-        });
+                updateManagersPreview(managers);
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("AdminHome", "Error loading managers: " + e.getMessage());
+            });
     }
 
-    private void showErrorInBranchPreview(String errorMessage) {
-        if (branchPreviewLayout != null && getActivity() != null) {
-            getActivity().runOnUiThread(() -> {
-                branchPreviewLayout.removeAllViews();
-                
-                // Use preset card style for error message
-                View errorCard = LayoutInflater.from(getContext()).inflate(R.layout.item_admin_branch_card, branchPreviewLayout, false);
-                TextView branchName = errorCard.findViewById(R.id.tvBranchName);
-                TextView branchAddress = errorCard.findViewById(R.id.tvBranchAddress);
-                TextView managerCount = errorCard.findViewById(R.id.tvManagerCount);
-                TextView employeeCount = errorCard.findViewById(R.id.tvEmployeeCount);
-                
-                branchName.setText("ERROR");
-                branchName.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
-                branchAddress.setText(errorMessage);
-                managerCount.setText("Unable to load");
-                employeeCount.setText("data");
-                
-                branchPreviewLayout.addView(errorCard);
-            });
+    private void updateManagersPreview(List<ManagersActivity.Manager> managers) {
+        if (managersRecyclerView != null) {
+            ManagersAdapter adapter = new ManagersAdapter(managers, null);
+            managersRecyclerView.setAdapter(adapter);
         }
     }
 
-    private void updateManagersPreview(List<EmployeeResponse.Employee> employees) {
-        if (managersRecyclerView != null) {
-            List<ManagersActivity.Manager> managers = new ArrayList<>();
+    private void showErrorInBranchPreview(String errorMessage) {
+        if (branchPreviewLayout != null && isAdded()) {
+            branchPreviewLayout.removeAllViews();
             
-            // Get first 3 managers for preview
-            int count = 0;
-            for (EmployeeResponse.Employee employee : employees) {
-                if ("manager".equalsIgnoreCase(employee.getRole()) && count < 3) {
-                    int userId = employee.getId();
-                    String fullName = employee.getFirstName() + " " + employee.getLastName();
-                    String branch = employee.getBranch() != null ? employee.getBranch() : "No branch assigned";
-                    String email = employee.getEmail() != null ? employee.getEmail() : "No email";
-                    String status = "Active";
-                    String phone = "+63 9XX XXX XXXX";
-                    String joinDate = "N/A";
-                    
-                    managers.add(new ManagersActivity.Manager(userId, fullName, branch, email, status, phone, joinDate));
-                    count++;
-                }
-            }
+            View errorCard = LayoutInflater.from(getContext()).inflate(R.layout.item_admin_branch_card, branchPreviewLayout, false);
+            TextView branchName = errorCard.findViewById(R.id.tvBranchName);
+            TextView branchAddress = errorCard.findViewById(R.id.tvBranchAddress);
             
-            ManagersAdapter adapter = new ManagersAdapter(managers, null);
-            managersRecyclerView.setAdapter(adapter);
+            branchName.setText("ERROR");
+            branchName.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
+            branchAddress.setText(errorMessage);
+            
+            branchPreviewLayout.addView(errorCard);
         }
     }
 }

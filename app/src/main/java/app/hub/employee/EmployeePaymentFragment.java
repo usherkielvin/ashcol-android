@@ -12,6 +12,12 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.button.MaterialButton;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
+
 import app.hub.R;
 import app.hub.api.PaymentDetailResponse;
 import app.hub.util.TokenManager;
@@ -208,7 +214,7 @@ public class EmployeePaymentFragment extends Fragment {
     }
 
     private void loadPaymentDetailsIfNeeded() {
-        if (ticketId == null || tokenManager == null) {
+        if (ticketId == null) {
             return;
         }
         if (totalAmount > 0) {
@@ -216,57 +222,29 @@ public class EmployeePaymentFragment extends Fragment {
         }
 
         setPaymentLoading(true);
-        String token = tokenManager.getToken();
-        if (token == null) {
-            setPaymentLoading(false);
-            return;
-        }
+        android.util.Log.d("EmployeePayment", "Loading payment details from Firestore for ticket: " + ticketId);
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<PaymentDetailResponse> call = apiService.getPaymentByTicketId("Bearer " + token, ticketId);
-        call.enqueue(new Callback<PaymentDetailResponse>() {
-            @Override
-            public void onResponse(Call<PaymentDetailResponse> call, Response<PaymentDetailResponse> response) {
-                if (!isAdded() || response.body() == null || !response.body().isSuccess()) {
-                    setPaymentLoading(false);
-                    return;
-                }
-
-                PaymentDetailResponse.PaymentDetail payment = response.body().getPayment();
-                if (payment == null) {
-                    setPaymentLoading(false);
-                    return;
-                }
-
-                totalAmount = payment.getAmount();
-                if (tvTotalAmount != null) {
-                    String amountText = "Php " + String.format("%.2f", totalAmount);
-                    tvTotalAmount.setText(amountText);
-                }
-
-                if (tvServiceName != null && (serviceName == null || serviceName.trim().isEmpty())) {
-                    serviceName = payment.getServiceName();
-                    if (serviceName != null) {
-                        tvServiceName.setText(serviceName);
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                setPaymentLoading(false);
+                if (!isAdded()) return;
+                
+                if (documentSnapshot.exists()) {
+                    Double amount = documentSnapshot.getDouble("total_amount");
+                    if (amount != null) {
+                        totalAmount = amount;
+                        if (tvTotalAmount != null) {
+                            String amountText = "Php " + String.format("%.2f", totalAmount);
+                            tvTotalAmount.setText(amountText);
+                        }
                     }
                 }
-
-                if (tvCustomerName != null && (customerName == null || customerName.trim().isEmpty())) {
-                    customerName = payment.getCustomerName();
-                    if (customerName != null) {
-                        tvCustomerName.setText(customerName);
-                    }
-                }
-
+            })
+            .addOnFailureListener(e -> {
                 setPaymentLoading(false);
-            }
-
-            @Override
-            public void onFailure(Call<PaymentDetailResponse> call, Throwable t) {
-                setPaymentLoading(false);
-                // Ignore to keep UI stable; amount will stay as-is.
-            }
-        });
+                android.util.Log.e("EmployeePayment", "Error loading payment details: " + e.getMessage());
+            });
     }
 
     private void setPaymentLoading(boolean loading) {

@@ -48,18 +48,18 @@ public class CustomerFirebaseListener {
             return;
         }
 
-        int customerId = tokenManager.getUserIdInt();
-        if (customerId <= 0) {
-            Log.w(TAG, "Invalid customer ID, cannot start Firebase listener");
+        String email = tokenManager.getEmail();
+        if (email == null || email.isEmpty()) {
+            Log.w(TAG, "Invalid customer email, cannot start Firebase listener");
             return;
         }
 
-        Log.i(TAG, "Starting Firebase listener for customer ID: " + customerId);
+        Log.i(TAG, "Starting Firebase listener for customer email: " + email);
         isListening = true;
 
         // Listen to tickets belonging to this customer
         ticketListener = firestore.collection("tickets")
-                .whereEqualTo("customerId", customerId)
+                .whereEqualTo("customer_email", email)
                 .addSnapshotListener((snapshots, error) -> {
                     if (error != null) {
                         Log.e(TAG, "Ticket listener error", error);
@@ -67,7 +67,7 @@ public class CustomerFirebaseListener {
                     }
 
                     if (snapshots == null || snapshots.isEmpty()) {
-                        Log.d(TAG, "No tickets in Firestore for customer: " + customerId);
+                        Log.d(TAG, "No tickets in Firestore for customer: " + email);
                         return;
                     }
 

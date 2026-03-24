@@ -20,6 +20,11 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.widget.NestedScrollView;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 import java.util.ArrayList;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -37,12 +42,7 @@ import java.util.Date;
 import java.util.Locale;
 
 import app.hub.R;
-import app.hub.api.CompleteWorkRequest;
-import app.hub.api.CompleteWorkResponse;
-import app.hub.api.TicketDetailResponse;
 import app.hub.api.TicketListResponse;
-import app.hub.api.UpdateTicketStatusRequest;
-import app.hub.api.UpdateTicketStatusResponse;
 import app.hub.map.EmployeeMapActivity;
 import app.hub.util.TokenManager;
 
@@ -195,149 +195,54 @@ public class EmployeeWorkFragment extends Fragment implements OnMapReadyCallback
     }
 
     private void loadAssignedTickets(boolean preserveUi) {
-        // Check if fragment is still attached and context is valid
-        if (!isAdded() || getContext() == null) {
-            android.util.Log.w("EmployeeWork", "Fragment detached or context null, skipping load");
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || !isAdded()) {
+            if (swipeRefreshLayout != null) {
+                swipeRefreshLayout.setRefreshing(false);
+            }
             return;
         }
 
         isLoadingTickets = true;
         if (!preserveUi) {
-            // Prevent stale map/status from flashing while loading.
             setMapVisible(false);
             if (workStatusContainer != null) {
                 workStatusContainer.removeAllViews();
             }
         }
 
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(getContext(), "You are not logged in.", Toast.LENGTH_SHORT).show();
-            if (swipeRefreshLayout != null) {
-                swipeRefreshLayout.setRefreshing(false);
-            }
-            android.util.Log.e("EmployeeWork", "No token found - user not logged in");
-            return;
-        }
+        android.util.Log.d("EmployeeWork", "Loading tickets from Firestore...");
 
-        android.util.Log.d("EmployeeWork", "Loading assigned tickets from API");
-
-        // Check if we have user info
-        String userEmail = tokenManager.getEmail();
-        String userRole = tokenManager.getRole();
-        String userName = tokenManager.getName();
-        android.util.Log.d("EmployeeWork", "User Email: " + userEmail + ", Role: " + userRole + ", Name: " + userName);
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getEmployeeTickets("Bearer " + token);
-
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(Call<TicketListResponse> call, Response<TicketListResponse> response) {
-                // Check if fragment is still attached and context is valid
-                if (!isAdded() || getContext() == null) {
-                    android.util.Log.w("EmployeeWork", "Fragment detached or context null, ignoring response");
-                    return;
-                }
-
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 isLoadingTickets = false;
-                swipeRefreshLayout.setRefreshing(false);
-
-                android.util.Log.d("EmployeeWork",
-                        "API Response - Success: " + response.isSuccessful() + ", Code: " + response.code());
-
-                if (response.isSuccessful() && response.body() != null) {
-                    TicketListResponse ticketResponse = response.body();
-                    android.util.Log.d("EmployeeWork",
-                            "Ticket Response - Success: " + ticketResponse.isSuccess() + ", Tickets count: "
-                                    + (ticketResponse.getTickets() != null ? ticketResponse.getTickets().size() : 0));
-
-                    if (ticketResponse.isSuccess()) {
-                        assignedTickets.clear();
-                        if (ticketResponse.getTickets() != null) {
-                            assignedTickets.addAll(ticketResponse.getTickets());
-                            android.util.Log.d("EmployeeWork", "Loaded " + assignedTickets.size() + " tickets");
-                        }
-                        updateActiveJobUi();
-
-                        // Don't show toast for empty list - it's normal if no tickets assigned yet
-                        if (assignedTickets.isEmpty()) {
-                            android.util.Log.d("EmployeeWork", "No assigned tickets found - this is normal");
-                        }
-                    } else {
-                        String message = ticketResponse.getMessage() != null ? ticketResponse.getMessage()
-                                : "Failed to load assigned tickets";
-                        android.util.Log.e("EmployeeWork", "API Error: " + message);
-                        // Only show error toast for actual errors, not empty lists
-                        if (!message.toLowerCase().contains("no") && !message.toLowerCase().contains("empty")) {
-                            Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                } else {
-                    String errorMessage = "Failed to load assigned tickets";
-                    String errorBody = "";
-                    if (response.errorBody() != null) {
-                        try {
-                            errorBody = response.errorBody().string();
-                            android.util.Log.e("EmployeeWork", "Error body: " + errorBody);
-
-                            // Try to parse JSON error message
-                            try {
-                                com.google.gson.JsonObject errorJson = new com.google.gson.Gson().fromJson(errorBody,
-                                        com.google.gson.JsonObject.class);
-                                if (errorJson.has("message")) {
-                                    errorMessage = errorJson.get("message").getAsString();
-                                }
-                            } catch (Exception parseEx) {
-                                // If JSON parsing fails, use raw error body
-                                errorMessage = errorBody.length() > 100 ? errorBody.substring(0, 100) + "..."
-                                        : errorBody;
-                            }
-                        } catch (Exception e) {
-                            android.util.Log.e("EmployeeWork", "Error reading error body", e);
-                        }
-                    }
-
-                    // Show user-friendly error based on status code
-                    switch (response.code()) {
-                        case 403:
-                            errorMessage = "You don't have permission to view assigned tickets. Please contact your manager.";
-                            break;
-                        case 401:
-                            errorMessage = "Session expired. Please log in again.";
-                            break;
-                        case 500:
-                            errorMessage = "Server error. Please try again later.";
-                            break;
-                        default:
-                            if (!errorMessage.isEmpty() && !errorMessage.equals("Failed to load assigned tickets")) {
-                                // Use parsed error message
-                            } else {
-                                errorMessage = "Failed to load assigned tickets (Error " + response.code() + ")";
-                            }
-                    }
-
-                    android.util.Log.e("EmployeeWork",
-                            "HTTP Error: " + errorMessage + " (Code: " + response.code() + ")");
-                    Toast.makeText(getContext(), errorMessage, Toast.LENGTH_LONG).show();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<TicketListResponse> call, Throwable t) {
-                // Check if fragment is still attached and context is valid
-                if (!isAdded() || getContext() == null) {
-                    android.util.Log.w("EmployeeWork", "Fragment detached or context null, ignoring failure");
-                    return;
+                if (!isAdded()) return;
+                if (swipeRefreshLayout != null) {
+                    swipeRefreshLayout.setRefreshing(false);
                 }
 
+                assignedTickets.clear();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        assignedTickets.add(ticket);
+                    }
+                }
+                android.util.Log.d("EmployeeWork", "Loaded " + assignedTickets.size() + " tickets");
+                updateActiveJobUi();
+            })
+            .addOnFailureListener(e -> {
                 isLoadingTickets = false;
-                swipeRefreshLayout.setRefreshing(false);
-                String errorMessage = "Network error: " + t.getMessage();
-                Toast.makeText(getContext(), errorMessage, Toast.LENGTH_SHORT).show();
-                android.util.Log.e("EmployeeWork", "Network Error", t);
-            }
-        });
+                if (!isAdded()) return;
+                if (swipeRefreshLayout != null) {
+                    swipeRefreshLayout.setRefreshing(false);
+                }
+                android.util.Log.e("EmployeeWork", "Error loading tickets: " + e.getMessage());
+                Toast.makeText(getContext(), "Failed to load tickets", Toast.LENGTH_SHORT).show();
+            });
     }
 
     private void showInitialState() {
@@ -523,41 +428,23 @@ public class EmployeeWorkFragment extends Fragment implements OnMapReadyCallback
             amountView.setText("Php --");
         }
 
-        if (ticketId == null || tokenManager == null) {
-            return;
-        }
-        String token = tokenManager.getToken();
-        if (token == null) {
-            return;
-        }
+        if (ticketId == null) return;
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<app.hub.api.PaymentDetailResponse> call = apiService.getPaymentByTicketId("Bearer " + token, ticketId);
-        call.enqueue(new Callback<app.hub.api.PaymentDetailResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.PaymentDetailResponse> call,
-                    Response<app.hub.api.PaymentDetailResponse> response) {
-                if (!isAdded() || response.body() == null || !response.body().isSuccess()) {
-                    return;
+        android.util.Log.d("EmployeeWork", "Loading paid amount from Firestore: " + ticketId);
+
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (!isAdded()) return;
+                
+                if (documentSnapshot.exists()) {
+                    Double amount = documentSnapshot.getDouble("total_amount");
+                    if (amount != null && amount > 0 && amountView != null) {
+                        String amountText = "Php " + String.format(Locale.getDefault(), "%,.2f", amount);
+                        amountView.setText(amountText);
+                    }
                 }
-
-                app.hub.api.PaymentDetailResponse.PaymentDetail payment = response.body().getPayment();
-                if (payment == null || amountView == null) {
-                    return;
-                }
-
-                double amount = payment.getAmount();
-                if (amount > 0) {
-                    String amountText = "Php " + String.format(Locale.getDefault(), "%,.2f", amount);
-                    amountView.setText(amountText);
-                }
-            }
-
-            @Override
-            public void onFailure(Call<app.hub.api.PaymentDetailResponse> call, Throwable t) {
-                // Keep UI stable; amount stays as placeholder.
-            }
-        });
+            });
     }
 
     private void setStepAction(View view, Runnable action) {
@@ -586,128 +473,73 @@ public class EmployeeWorkFragment extends Fragment implements OnMapReadyCallback
     }
 
     private void requestOnlinePaymentFromWorkTab() {
-        if (activeTicket == null || tokenManager == null) {
-            return;
-        }
-        String token = tokenManager.getToken();
-        if (token == null) {
-            return;
-        }
+        if (activeTicket == null) return;
 
         double amount = activeTicket.getAmount();
         if (amount <= 0) {
-            fetchTicketAmountAndRequestPayment(token, activeTicket.getTicketId());
+            fetchTicketAmountAndRequestPayment(activeTicket.getTicketId());
             return;
         }
-        sendPaymentRequest(token, activeTicket.getTicketId(), amount);
+        sendPaymentRequest(activeTicket.getTicketId(), amount);
     }
 
-    private void fetchTicketAmountAndRequestPayment(String token, String ticketId) {
-        if (ticketId == null) {
-            return;
-        }
+    private void fetchTicketAmountAndRequestPayment(String ticketId) {
+        if (ticketId == null) return;
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketDetailResponse> call = apiService.getTicketDetail("Bearer " + token, ticketId);
-        call.enqueue(new Callback<TicketDetailResponse>() {
-            @Override
-            public void onResponse(Call<TicketDetailResponse> call, Response<TicketDetailResponse> response) {
-                if (!isAdded()) {
-                    return;
-                }
-                TicketDetailResponse body = response.body();
-                if (response.isSuccessful() && body != null && body.isSuccess() && body.getTicket() != null) {
-                    double amount = body.getTicket().getAmount();
-                    if (amount > 0) {
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (!isAdded()) return;
+                
+                if (documentSnapshot.exists()) {
+                    Double amount = documentSnapshot.getDouble("total_amount");
+                    if (amount != null && amount > 0) {
                         if (activeTicket != null && ticketId.equals(activeTicket.getTicketId())) {
                             activeTicket.setAmount(amount);
                         }
-                        sendPaymentRequest(token, ticketId, amount);
-                        return;
+                        sendPaymentRequest(ticketId, amount);
+                    } else {
+                        Toast.makeText(getContext(), "Missing amount. Please set the ticket amount first.", Toast.LENGTH_SHORT).show();
                     }
                 }
-
-                Toast.makeText(getContext(),
-                        "Missing amount. Please set the ticket amount first.",
-                        Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onFailure(Call<TicketDetailResponse> call, Throwable t) {
+            })
+            .addOnFailureListener(e -> {
                 if (isAdded()) {
                     Toast.makeText(getContext(), "Failed to load ticket amount", Toast.LENGTH_SHORT).show();
                 }
-            }
-        });
+            });
     }
 
-    private void sendPaymentRequest(String token, String ticketId, double amount) {
-        if (ticketId == null) {
-            return;
-        }
+    private void sendPaymentRequest(String ticketId, double amount) {
+        if (ticketId == null) return;
 
-        // Get technician ID
-        int technicianId = tokenManager.getUserIdInt();
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("total_amount", amount);
+        updates.put("status", "Pending Payment");
+        updates.put("payment_status", "pending");
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
 
-        // Create payment request using new API
-        app.hub.api.PaymentRequestBody requestBody = new app.hub.api.PaymentRequestBody(ticketId, technicianId);
-        ApiService apiService = ApiClient.getApiService();
-        Call<app.hub.api.PaymentRequestResponse> call = apiService.requestPayment(
-                "Bearer " + token, requestBody);
-
-        call.enqueue(new Callback<app.hub.api.PaymentRequestResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.PaymentRequestResponse> call,
-                    Response<app.hub.api.PaymentRequestResponse> response) {
-                if (!isAdded()) {
-                    return;
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                if (!isAdded()) return;
+                
+                Toast.makeText(getContext(), "Payment request sent to customer.", Toast.LENGTH_SHORT).show();
+                
+                if (activeTicket != null && ticketId.equals(activeTicket.getTicketId())) {
+                    activeTicket.setStatus("Pending Payment");
+                    activeTicket.setStatusDetail("Pending Payment");
+                    clearReadyForPayment(ticketId);
                 }
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    // Check if this is a reminder or new request
-                    boolean isReminder = response.body().isReminder();
-                    String message = isReminder 
-                        ? "Payment reminder sent to customer." 
-                        : "Payment request sent to customer.";
-                    
-                    Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
-                    
-                    if (activeTicket != null && ticketId.equals(activeTicket.getTicketId())) {
-                        activeTicket.setStatus("Pending Payment");
-                        activeTicket.setStatusDetail("Pending Payment");
-                        // Clear the ready for payment flag since payment is now requested
-                        clearReadyForPayment(ticketId);
-                    }
-                    
-                    // Always navigate to confirmation screen (for new requests and reopening)
-                    showPaymentConfirmationScreen();
-                    
-                    // Immediate refresh to update UI
-                    loadAssignedTickets(true);
-
-                    // Also trigger an extra refresh after 1 second to ensure backend is updated
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                        if (isAdded()) {
-                            loadAssignedTickets(true);
-                        }
-                    }, 1000);
-                    return;
-                }
-
-                // Handle error response
-                String errorMessage = "Failed to request payment";
-                if (response.body() != null && response.body().getMessage() != null) {
-                    errorMessage = response.body().getMessage();
-                }
-                Toast.makeText(getContext(), errorMessage, Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onFailure(Call<app.hub.api.PaymentRequestResponse> call, Throwable t) {
+                
+                showPaymentConfirmationScreen();
+                loadAssignedTickets(true);
+            })
+            .addOnFailureListener(e -> {
                 if (isAdded()) {
-                    Toast.makeText(getContext(), "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Failed to send payment request: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
-            }
-        });
+            });
     }
 
     private void showPaymentConfirmationScreen() {
@@ -1451,47 +1283,34 @@ public class EmployeeWorkFragment extends Fragment implements OnMapReadyCallback
     }
 
     private void updateTicketStatus(String status, String statusDetail, Runnable onSuccess) {
-        String token = tokenManager.getToken();
-        if (token == null || activeTicket == null) {
+        if (activeTicket == null) {
             return;
         }
 
-        UpdateTicketStatusRequest request = new UpdateTicketStatusRequest(status, statusDetail);
-        ApiService apiService = ApiClient.getApiService();
-        Call<UpdateTicketStatusResponse> call = apiService.updateTicketStatus(
-                "Bearer " + token, activeTicket.getTicketId(), request);
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("status", status);
+        updates.put("status_detail", statusDetail);
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
 
-        call.enqueue(new Callback<UpdateTicketStatusResponse>() {
-            @Override
-            public void onResponse(Call<UpdateTicketStatusResponse> call,
-                    Response<UpdateTicketStatusResponse> response) {
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    activeTicket.setStatus(status);
-                    activeTicket.setStatusDetail(statusDetail);
-                    if (onSuccess != null) {
-                        onSuccess.run();
-                    }
-
-                    // Immediate refresh to sync with backend
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                        if (isAdded()) {
-                            loadAssignedTickets(true);
-                        }
-                    }, 500);
-                    return;
+        FirebaseFirestore.getInstance().collection("tickets").document(activeTicket.getTicketId())
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                activeTicket.setStatus(status);
+                activeTicket.setStatusDetail(statusDetail);
+                if (onSuccess != null) {
+                    onSuccess.run();
                 }
+
+                // Immediate refresh to sync with local state
+                if (isAdded()) {
+                    loadAssignedTickets(true);
+                }
+            })
+            .addOnFailureListener(e -> {
                 if (getContext() != null) {
-                    Toast.makeText(getContext(), "Failed to update status", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Failed to update status: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
-            }
-
-            @Override
-            public void onFailure(Call<UpdateTicketStatusResponse> call, Throwable t) {
-                if (getContext() != null) {
-                    Toast.makeText(getContext(), "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
+            });
     }
 
     @Override

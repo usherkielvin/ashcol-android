@@ -25,6 +25,7 @@ import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
 
 import app.hub.ForgotPasswordActivity;
 import app.hub.R;
@@ -195,12 +196,30 @@ public class MainActivity extends AppCompatActivity {
             .addOnCompleteListener(this, task -> {
                 if (task.isSuccessful()) {
                     FirebaseUser user = authManager.getCurrentUser();
-                    // For now, load default role or try pulling from Claims
-                    String role = "customer"; 
-                    tokenManager.saveEmail(user.getEmail());
-                    tokenManager.saveRole(role);
-                    
-                    updateLocationAndNavigate(role, user.getEmail());
+                    if (user != null) {
+                        tokenManager.saveEmail(user.getEmail());
+                        tokenManager.saveUid(user.getUid());
+                        
+                        // Fetch role from Firestore
+                        firestoreManager.getUserProfile(user.getUid(), new FirestoreManager.UserProfileListener() {
+                            @Override
+                            public void onProfileLoaded(DocumentSnapshot doc) {
+                                String role = (doc != null && doc.exists()) ? doc.getString("role") : "customer";
+                                if (role == null || role.isEmpty()) role = "customer";
+                                
+                                tokenManager.saveRole(role);
+                                updateLocationAndNavigate(role, user.getEmail());
+                            }
+
+                            @Override
+                            public void onError(Exception e) {
+                                // Default to customer if profile fetch fails
+                                String role = "customer";
+                                tokenManager.saveRole(role);
+                                updateLocationAndNavigate(role, user.getEmail());
+                            }
+                        });
+                    }
                 } else {
                     if (loginButton != null) {
                         loginButton.setEnabled(true);
@@ -238,10 +257,30 @@ public class MainActivity extends AppCompatActivity {
                         .addOnCompleteListener(this, authTask -> {
                             if (authTask.isSuccessful()) {
                                 FirebaseUser user = authManager.getCurrentUser();
-                                String role = "customer";
-                                tokenManager.saveEmail(user.getEmail());
-                                tokenManager.saveRole(role);
-                                updateLocationAndNavigate(role, user.getEmail());
+                                if (user != null) {
+                                    tokenManager.saveEmail(user.getEmail());
+                                    tokenManager.saveUid(user.getUid());
+                                    
+                                    // Fetch role from Firestore
+                                    firestoreManager.getUserProfile(user.getUid(), new FirestoreManager.UserProfileListener() {
+                                        @Override
+                                        public void onProfileLoaded(DocumentSnapshot doc) {
+                                            String role = doc.getString("role");
+                                            if (role == null) role = "customer";
+                                            
+                                            tokenManager.saveRole(role);
+                                            updateLocationAndNavigate(role, user.getEmail());
+                                        }
+
+                                        @Override
+                                        public void onError(Exception e) {
+                                            // Default to customer if profile fetch fails
+                                            String role = "customer";
+                                            tokenManager.saveRole(role);
+                                            updateLocationAndNavigate(role, user.getEmail());
+                                        }
+                                    });
+                                }
                             } else {
                                 showError(getString(R.string.login_failed_title), authTask.getException() != null ? authTask.getException().getMessage() : "Authentication failed");
                             }

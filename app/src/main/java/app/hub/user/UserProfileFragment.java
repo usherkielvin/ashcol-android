@@ -26,9 +26,6 @@ import com.google.android.material.imageview.ShapeableImageView;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 
 import app.hub.R;
-import app.hub.api.LogoutResponse;
-import app.hub.api.ProfilePhotoResponse;
-import app.hub.api.UserResponse;
 import app.hub.common.AboutUsActivity;
 import app.hub.common.MainActivity;
 import app.hub.common.PersonalInfoActivity;
@@ -49,6 +46,12 @@ import java.net.URL;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
 
 import app.hub.common.FirestoreManager;
 
@@ -95,16 +98,20 @@ public class UserProfileFragment extends Fragment {
         // Start real-time listener
         firestoreManager.listenToUserProfile(new FirestoreManager.UserProfileListener() {
             @Override
-            public void onProfileUpdated(UserResponse.Data profile) {
-                if (getActivity() != null) {
+            public void onProfileLoaded(DocumentSnapshot doc) {
+                if (getActivity() != null && doc != null && doc.exists()) {
                     getActivity().runOnUiThread(() -> {
-                        processUserData(profile);
+                        processUserData(doc);
                         updateUI();
+                        
+                        String name = doc.getString("name");
+                        String branch = doc.getString("branch");
+                        
                         // Also update token manager with latest data
-                        if (profile.getName() != null)
-                            tokenManager.saveName(profile.getName());
-                        if (profile.getBranch() != null)
-                            tokenManager.saveBranchInfo(profile.getBranch(), 0);
+                        if (name != null)
+                            tokenManager.saveName(name);
+                        if (branch != null)
+                            tokenManager.saveBranchInfo(branch, 0);
                     });
                 }
             }
@@ -112,8 +119,8 @@ public class UserProfileFragment extends Fragment {
             @Override
             public void onError(Exception e) {
                 Log.e(TAG, "Firestore listen error: " + e.getMessage());
-                // Fallback to API if Firestore fails
-                fetchUserData();
+                // Fallback to cached data if Firestore fails
+                fallbackToCachedData();
             }
         });
 
@@ -209,16 +216,17 @@ public class UserProfileFragment extends Fragment {
         fallbackToCachedData();
     }
 
-    private void processUserData(UserResponse.Data userData) {
-        currentName = buildNameFromApi(userData);
-        currentEmail = getEmailToDisplay(userData);
-        currentBranch = userData.getBranch();
+    private void processUserData(com.google.firebase.firestore.DocumentSnapshot doc) {
+        currentName = buildNameFromDoc(doc);
+        currentEmail = getEmailToDisplay(doc);
+        currentBranch = doc.getString("branch");
 
         connectionStatus = null;
 
-        // Load profile photo from API if available
-        if (userData.getProfilePhoto() != null && !userData.getProfilePhoto().isEmpty()) {
-            loadProfileImageFromUrl(userData.getProfilePhoto());
+        String profilePhoto = doc.getString("profile_photo");
+        // Load profile photo from URL if available
+        if (profilePhoto != null && !profilePhoto.isEmpty()) {
+            loadProfileImageFromUrl(profilePhoto);
         } else {
             // No profile photo - set default avatar
             if (imgProfile != null && getActivity() != null) {
@@ -231,7 +239,7 @@ public class UserProfileFragment extends Fragment {
             // Also clear local cache
             try {
                 File imageFile = tokenManager.getProfileImageFile(requireContext());
-                if (imageFile.exists()) {
+                if (imageFile != null && imageFile.exists()) {
                     imageFile.delete();
                 }
             } catch (Exception e) {
@@ -243,14 +251,14 @@ public class UserProfileFragment extends Fragment {
         updateCache(connectionStatus);
     }
 
-    private String buildNameFromApi(UserResponse.Data userData) {
-        String apiName = userData.getName();
-        if (isValidName(apiName)) {
-            return apiName.trim();
+    private String buildNameFromDoc(com.google.firebase.firestore.DocumentSnapshot doc) {
+        String name = doc.getString("name");
+        if (isValidName(name)) {
+            return name.trim();
         }
 
-        String firstName = userData.getFirstName();
-        String lastName = userData.getLastName();
+        String firstName = doc.getString("first_name");
+        String lastName = doc.getString("last_name");
 
         if (isValidName(firstName) || isValidName(lastName)) {
             StringBuilder builder = new StringBuilder();
@@ -271,17 +279,17 @@ public class UserProfileFragment extends Fragment {
         return null;
     }
 
-    private String getEmailToDisplay(UserResponse.Data userData) {
+    private String getEmailToDisplay(com.google.firebase.firestore.DocumentSnapshot doc) {
         String cachedEmail = getCachedEmail();
         if (isValidEmail(cachedEmail)) {
             return cachedEmail;
         }
 
-        String apiEmail = userData.getEmail();
-        String apiUsername = userData.getUsername();
+        String email = doc.getString("email");
+        String username = doc.getString("username");
 
-        if (isValidApiEmail(apiEmail, apiUsername)) {
-            return apiEmail.trim();
+        if (isValidApiEmail(email, username)) {
+            return email.trim();
         }
 
         return cachedEmail;

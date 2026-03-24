@@ -26,10 +26,11 @@ import java.util.List;
 import app.hub.R;
 import app.hub.api.EmployeeResponse;
 import app.hub.api.TicketListResponse;
+
 import app.hub.util.TokenManager;
 import app.hub.manager.ManagerDataManager.TicketDataChangeListener;
 
-public class ManagerWorkFragment extends Fragment implements TicketDataChangeListener {
+public class ManagerWorkFragment extends Fragment implements ManagerDataManager.TicketDataChangeListener {
 
     private RecyclerView rvWorkLoadList;
     private SearchView searchViewWork;
@@ -63,71 +64,56 @@ public class ManagerWorkFragment extends Fragment implements TicketDataChangeLis
         setupFilters();
         setupSearch();
 
-        // Ensure "All" filter is selected by default
         chipAll.setChecked(true);
         currentFilter = "all";
 
-        // Display tickets immediately if available
         displayTicketData();
 
-        // Ensure we get updates when data loads asynchronously
-        ManagerDataManager.registerTicketListener(this);
         ManagerDataManager.loadAllData(getContext(), new ManagerDataManager.DataLoadCallback() {
             @Override
-            public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {
-            }
+            public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {}
 
             @Override
             public void onTicketsLoaded(List<TicketListResponse.TicketItem> tickets) {
-                displayTicketData();
+                if(getActivity() != null) {
+                    getActivity().runOnUiThread(() -> displayTicketData());
+                }
             }
 
             @Override
-            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats,
-                    List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {
-            }
+            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats, List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {}
 
             @Override
-            public void onLoadComplete() {
-                android.util.Log.d("ManagerWork", "Data load complete");
-            }
+            public void onLoadComplete() {}
 
             @Override
-            public void onLoadError(String error) {
-                android.util.Log.e("ManagerWork", "Data load error: " + error);
-                // Don't show toast - errors are already logged
-            }
+            public void onLoadError(String error) {}
         });
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        if (getContext() == null) {
-            return;
-        }
-        ManagerDataManager.refreshTickets(getContext(), new ManagerDataManager.DataLoadCallback() {
+        if (getContext() == null) return;
+        ManagerDataManager.loadAllData(getContext(), new ManagerDataManager.DataLoadCallback() {
             @Override
-            public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {
-            }
+            public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {}
 
             @Override
             public void onTicketsLoaded(List<TicketListResponse.TicketItem> tickets) {
-                displayTicketData();
+                if(getActivity() != null) {
+                    getActivity().runOnUiThread(() -> displayTicketData());
+                }
             }
 
             @Override
-            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats,
-                    List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {
-            }
+            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats, List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {}
 
             @Override
-            public void onLoadComplete() {
-            }
+            public void onLoadComplete() {}
 
             @Override
-            public void onLoadError(String error) {
-            }
+            public void onLoadError(String error) {}
         });
     }
 

@@ -13,6 +13,9 @@ import java.util.List;
 import app.hub.R;
 import app.hub.util.TokenManager;
 
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 public class BranchesActivity extends AppCompatActivity {
 
     private RecyclerView branchesRecyclerView;
@@ -54,60 +57,29 @@ public class BranchesActivity extends AppCompatActivity {
     }
 
     private void loadBranches() {
-        android.util.Log.d("BranchesActivity", "Loading branches from API...");
+        android.util.Log.d("BranchesActivity", "Loading branches from Firestore...");
         
-        TokenManager tokenManager = new TokenManager(this);
-        String token = tokenManager.getToken();
-        
-        if (token == null) {
-            android.util.Log.e("BranchesActivity", "No token available");
-            return;
-        }
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<app.hub.api.BranchResponse> call = apiService.getBranches("Bearer " + token);
-        
-        call.enqueue(new Callback<app.hub.api.BranchResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.BranchResponse> call, Response<app.hub.api.BranchResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    app.hub.api.BranchResponse branchResponse = response.body();
+        FirebaseFirestore.getInstance().collection("branches").get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                branchList.clear();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    String name = doc.getString("name");
+                    String manager = doc.getString("manager");
+                    Long countLong = doc.getLong("employeeCount");
+                    int employeeCount = countLong != null ? countLong.intValue() : 0;
+                    String description = doc.getString("description");
                     
-                    if (branchResponse.isSuccess()) {
-                        processBranchData(branchResponse.getBranches());
-                    } else {
-                        android.util.Log.e("BranchesActivity", "API returned success=false: " + branchResponse.getMessage());
-                    }
-                } else {
-                    android.util.Log.e("BranchesActivity", "API response not successful");
+                    branchList.add(new Branch(name, manager, employeeCount, description));
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<app.hub.api.BranchResponse> call, Throwable t) {
-                android.util.Log.e("BranchesActivity", "API call failed: " + t.getMessage(), t);
-            }
-        });
-    }
-
-    private void processBranchData(List<app.hub.api.BranchResponse.Branch> apiBranches) {
-        branchList.clear();
-        
-        // Convert API branch data to local Branch objects
-        for (app.hub.api.BranchResponse.Branch apiBranch : apiBranches) {
-            branchList.add(new Branch(
-                apiBranch.getName(),
-                apiBranch.getManager(),
-                apiBranch.getEmployeeCount(),
-                apiBranch.getDescription()
-            ));
-        }
-        
-        // Update UI on main thread
-        runOnUiThread(() -> {
-            branchesAdapter.notifyDataSetChanged();
-            android.util.Log.d("BranchesActivity", "Loaded " + branchList.size() + " branches from API");
-        });
+                
+                runOnUiThread(() -> {
+                    branchesAdapter.notifyDataSetChanged();
+                    android.util.Log.d("BranchesActivity", "Loaded " + branchList.size() + " branches from Firestore");
+                });
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("BranchesActivity", "Error loading branches: " + e.getMessage());
+            });
     }
 
     private void onBranchClick(Branch branch) {

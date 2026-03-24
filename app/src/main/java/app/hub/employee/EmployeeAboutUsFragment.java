@@ -11,8 +11,8 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import app.hub.R;
-import app.hub.api.AboutResponse;
 import com.facebook.shimmer.ShimmerFrameLayout;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class EmployeeAboutUsFragment extends Fragment {
 
@@ -51,47 +51,34 @@ public class EmployeeAboutUsFragment extends Fragment {
 
     private void loadAboutContent() {
         setLoading(true);
-        ApiService apiService = ApiClient.getApiService();
-        Call<AboutResponse> call = apiService.getAbout();
-        call.enqueue(new Callback<AboutResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<AboutResponse> call, @NonNull Response<AboutResponse> response) {
+        
+        FirebaseFirestore.getInstance().collection("settings").document("about")
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
                 if (!isAdded()) return;
-
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    AboutResponse.Data data = response.body().getData();
-                    if (data != null) {
-                        bindAbout(data);
-                    }
+                
+                if (documentSnapshot.exists()) {
+                    String title = documentSnapshot.getString("title");
+                    String desc = documentSnapshot.getString("description");
+                    String email = documentSnapshot.getString("support_email");
+                    String phone = documentSnapshot.getString("support_phone");
+                    String hours = documentSnapshot.getString("support_hours");
+                    
+                    if (tvAboutTitle != null && title != null) tvAboutTitle.setText(title);
+                    if (tvAboutBody != null && desc != null) tvAboutBody.setText(desc);
+                    if (tvSupportEmail != null && email != null) tvSupportEmail.setText("Email: " + email);
+                    if (tvSupportPhone != null && phone != null) tvSupportPhone.setText("Phone: " + phone);
+                    if (tvSupportHours != null && hours != null) tvSupportHours.setText("Hours: " + hours);
                 }
                 setLoading(false);
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<AboutResponse> call, @NonNull Throwable t) {
-                // Keep existing static content
-                if (!isAdded()) return;
-                setLoading(false);
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                if (isAdded()) setLoading(false);
+            });
     }
 
-    private void bindAbout(AboutResponse.Data data) {
-        if (tvAboutTitle != null && data.getTitle() != null) {
-            tvAboutTitle.setText(data.getTitle());
-        }
-        if (tvAboutBody != null && data.getDescription() != null) {
-            tvAboutBody.setText(data.getDescription());
-        }
-        if (tvSupportEmail != null && data.getSupportEmail() != null) {
-            tvSupportEmail.setText("Email: " + data.getSupportEmail());
-        }
-        if (tvSupportPhone != null && data.getSupportPhone() != null) {
-            tvSupportPhone.setText("Phone: " + data.getSupportPhone());
-        }
-        if (tvSupportHours != null && data.getSupportHours() != null) {
-            tvSupportHours.setText("Hours: " + data.getSupportHours());
-        }
+    private void bindAbout(Object data) {
+        // No longer used
     }
 
     private void navigateBack() {

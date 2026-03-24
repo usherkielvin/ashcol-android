@@ -29,6 +29,12 @@ import app.hub.api.TicketListResponse;
 import app.hub.employee.EmployeeTicketDetailActivity;
 import app.hub.util.TokenManager;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 public class UserTicketsFragment extends Fragment {
     private static final String TAG = "UserTicketsFragment";
 

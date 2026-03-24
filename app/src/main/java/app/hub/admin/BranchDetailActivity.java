@@ -12,8 +12,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import app.hub.R;
-import app.hub.api.EmployeeResponse;
 import app.hub.util.TokenManager;
+
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 public class BranchDetailActivity extends AppCompatActivity {
 
@@ -69,87 +71,43 @@ public class BranchDetailActivity extends AppCompatActivity {
         managerEmail.setText(branchManager != null ? branchManager.toLowerCase().replace(" ", ".") + "@ashcol.com" : "");
         employeeCount.setText(empCount + " Total");
 
-        // Load real employees from API
-        loadEmployeesFromAPI(branchNameStr);
+        // Load real employees from Firestore
+        loadEmployeesFromFirestore(branchNameStr);
     }
 
-    private void loadEmployeesFromAPI(String branchNameStr) {
+    private void loadEmployeesFromFirestore(String branchNameStr) {
         if (branchNameStr == null) {
             showEmptyEmployeeList();
             return;
         }
 
-        TokenManager tokenManager = new TokenManager(this);
-        String token = tokenManager.getToken();
-        
-        if (token == null) {
-            Toast.makeText(this, "Authentication required", Toast.LENGTH_SHORT).show();
-            showEmptyEmployeeList();
-            return;
-        }
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<EmployeeResponse> call = apiService.getEmployeesByBranch("Bearer " + token, branchNameStr);
-        
-        call.enqueue(new Callback<EmployeeResponse>() {
-            @Override
-            public void onResponse(Call<EmployeeResponse> call, Response<EmployeeResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    EmployeeResponse employeeResponse = response.body();
+        FirebaseFirestore.getInstance().collection("users")
+            .whereEqualTo("branch", branchNameStr)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                List<ManagersActivity.Manager> employees = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    String firstName = doc.getString("first_name");
+                    String lastName = doc.getString("last_name");
+                    String name = firstName != null ? firstName + " " + lastName : doc.getString("name");
+                    String email = doc.getString("email");
+                    String phone = doc.getString("phone");
+                    String branch = doc.getString("branch");
+                    String profilePhoto = doc.getString("profile_photo");
                     
-                    if (employeeResponse.isSuccess()) {
-                        List<Employee> employees = convertToEmployeeList(employeeResponse.getEmployees());
-                        displayEmployees(employees);
-                    } else {
-                        android.util.Log.e("BranchDetail", "API returned success=false: " + employeeResponse.getMessage());
-                        showEmptyEmployeeList();
-                    }
-                } else {
-                    android.util.Log.e("BranchDetail", "API response not successful: " + response.code());
-                    showEmptyEmployeeList();
+                    employees.add(new ManagersActivity.Manager(name, email, phone, branch, profilePhoto));
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<EmployeeResponse> call, Throwable t) {
-                android.util.Log.e("BranchDetail", "API call failed: " + t.getMessage(), t);
-                Toast.makeText(BranchDetailActivity.this, "Failed to load employees", Toast.LENGTH_SHORT).show();
+                
+                if (employees.isEmpty()) {
+                    showEmptyEmployeeList();
+                } else {
+                    employeesRecyclerView.setAdapter(new ManagersAdapter(employees, null));
+                }
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("BranchDetailActivity", "Error loading employees: " + e.getMessage());
                 showEmptyEmployeeList();
-            }
-        });
-    }
-
-    private List<Employee> convertToEmployeeList(List<EmployeeResponse.Employee> apiEmployees) {
-        List<Employee> employees = new ArrayList<>();
-        
-        for (EmployeeResponse.Employee apiEmployee : apiEmployees) {
-            String fullName = (apiEmployee.getFirstName() != null ? apiEmployee.getFirstName() : "") + 
-                             " " + (apiEmployee.getLastName() != null ? apiEmployee.getLastName() : "");
-            fullName = fullName.trim();
-            
-            if (fullName.isEmpty()) {
-                fullName = apiEmployee.getUsername() != null ? apiEmployee.getUsername() : "Employee #" + apiEmployee.getId();
-            }
-            
-            String role = apiEmployee.getRole() != null ? 
-                         capitalizeFirst(apiEmployee.getRole()) : "Employee";
-            
-            employees.add(new Employee(fullName, role));
-        }
-        
-        return employees;
-    }
-
-    private String capitalizeFirst(String str) {
-        if (str == null || str.isEmpty()) {
-            return str;
-        }
-        return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
-    }
-
-    private void displayEmployees(List<Employee> employees) {
-        EmployeesAdapter adapter = new EmployeesAdapter(employees);
-        employeesRecyclerView.setAdapter(adapter);
+            });
     }
 
     private void showEmptyEmployeeList() {

@@ -19,6 +19,12 @@ import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.facebook.shimmer.ShimmerFrameLayout;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -141,40 +147,41 @@ public class EmployeeJobHistoryFragment extends Fragment {
     }
 
     private void loadHistoryTickets() {
-        setLoading(true);
-        filteredTickets.clear();
-        adapter.notifyDataSetChanged();
-        String token = tokenManager.getToken();
-        if (token == null) {
-            setLoading(false);
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             showEmptyState(true);
             return;
         }
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getEmployeeTickets("Bearer " + token);
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<TicketListResponse> call,
-                    @NonNull Response<TicketListResponse> response) {
+        setLoading(true);
+        filteredTickets.clear();
+        adapter.notifyDataSetChanged();
+
+        android.util.Log.d("JobHistory", "Loading job history from Firestore for user: " + user.getUid());
+
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 if (!isAdded()) return;
                 allTickets.clear();
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    if (response.body().getTickets() != null) {
-                        allTickets.addAll(response.body().getTickets());
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        allTickets.add(ticket);
                     }
                 }
+                android.util.Log.d("JobHistory", "Loaded " + allTickets.size() + " tickets from Firestore");
                 applyFilters();
                 setLoading(false);
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<TicketListResponse> call, @NonNull Throwable t) {
+            })
+            .addOnFailureListener(e -> {
                 if (!isAdded()) return;
                 setLoading(false);
+                android.util.Log.e("JobHistory", "Error loading job history: " + e.getMessage());
                 showEmptyState(true);
-            }
-        });
+            });
     }
 
     private void applyFilters() {

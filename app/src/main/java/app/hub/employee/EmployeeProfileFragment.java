@@ -26,20 +26,19 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 import app.hub.R;
-import app.hub.api.ChangePasswordRequest;
-import app.hub.api.ChangePasswordResponse;
 import app.hub.common.MainActivity;
 import app.hub.common.ProfileAboutUsFragment;
 import app.hub.util.LoadingDialog;
 import app.hub.util.TokenManager;
 import app.hub.util.UiPreferences;
 
-
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
-
-import app.hub.api.LogoutResponse;
+import com.google.firebase.auth.AuthCredential;
+import com.google.firebase.auth.EmailAuthProvider;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -361,93 +360,40 @@ public class EmployeeProfileFragment extends Fragment {
             return;
         }
         
-        String authToken = tokenManager.getAuthToken();
-        if (authToken == null) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || user.getEmail() == null) {
             Toast.makeText(getContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        ChangePasswordRequest request = new ChangePasswordRequest(currentPassword, newPassword, newPassword);
-        ApiService apiService = ApiClient.getApiService();
-        Call<ChangePasswordResponse> call = apiService.changePassword(authToken, request);
+        LoadingDialog loadingDialog = new LoadingDialog(requireContext());
+        loadingDialog.show();
 
-        call.enqueue(new Callback<ChangePasswordResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<ChangePasswordResponse> call,
-                    @NonNull Response<ChangePasswordResponse> response) {
-                // Additional safety check
-                if (!isAdded() || getContext() == null) {
-                    return;
-                }
-                    
-                if (response.isSuccessful() && response.body() != null) {
-                    ChangePasswordResponse changePasswordResponse = response.body();
-                    if (changePasswordResponse.isSuccess()) {
-                        Toast.makeText(getContext(),
-                                changePasswordResponse.getMessage() != null ? changePasswordResponse.getMessage()
-                                        : "Password changed successfully",
-                                Toast.LENGTH_SHORT).show();
-                    } else {
-                        String errorMessage = changePasswordResponse.getMessage();
-                        if (errorMessage == null || errorMessage.isEmpty()) {
-                            errorMessage = "Failed to change password";
+        // Re-authenticate user before changing password
+        AuthCredential credential = EmailAuthProvider.getCredential(user.getEmail(), currentPassword);
+        user.reauthenticate(credential)
+            .addOnSuccessListener(aVoid -> {
+                // Change password
+                user.updatePassword(newPassword)
+                    .addOnSuccessListener(aVoid1 -> {
+                        if (isAdded()) {
+                            loadingDialog.dismiss();
+                            Toast.makeText(getContext(), "Password changed successfully", Toast.LENGTH_SHORT).show();
                         }
-                        Toast.makeText(getContext(), errorMessage, Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    handlePasswordChangeError(response);
+                    })
+                    .addOnFailureListener(e -> {
+                        if (isAdded()) {
+                            loadingDialog.dismiss();
+                            Toast.makeText(getContext(), "Failed to update password: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                    });
+            })
+            .addOnFailureListener(e -> {
+                if (isAdded()) {
+                    loadingDialog.dismiss();
+                    Toast.makeText(getContext(), "Re-authentication failed. Please check your current password.", Toast.LENGTH_LONG).show();
                 }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ChangePasswordResponse> call, @NonNull Throwable t) {
-                // Safety check
-                if (!isAdded() || getContext() == null) {
-                    return;
-                }
-                    
-                Log.e("EmployeeSettingsFragment", "Change password failed: " + t.getMessage());
-                Toast.makeText(getContext(), "Network error. Please check your connection.", Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-    private void handlePasswordChangeError(Response<ChangePasswordResponse> response) {
-        if (response.code() == 400 || response.code() == 422) {
-            try {
-                ChangePasswordResponse errorResponse = response.body();
-                if (errorResponse != null && errorResponse.getErrors() != null) {
-                    StringBuilder errorMsg = new StringBuilder();
-                    ChangePasswordResponse.Errors errors = errorResponse.getErrors();
-
-                    if (errors.getCurrent_password() != null && errors.getCurrent_password().length > 0) {
-                        errorMsg.append(errors.getCurrent_password()[0]).append("\n");
-                    }
-                    if (errors.getNew_password() != null && errors.getNew_password().length > 0) {
-                        errorMsg.append(errors.getNew_password()[0]).append("\n");
-                    }
-                    if (errors.getNew_password_confirmation() != null
-                            && errors.getNew_password_confirmation().length > 0) {
-                        errorMsg.append(errors.getNew_password_confirmation()[0]);
-                    }
-
-                    if (errorMsg.length() > 0) {
-                        Toast.makeText(getContext(), errorMsg.toString().trim(), Toast.LENGTH_LONG).show();
-                    } else {
-                        Toast.makeText(getContext(),
-                                errorResponse.getMessage() != null ? errorResponse.getMessage() : "Invalid input",
-                                Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    Toast.makeText(getContext(), "Invalid input. Please check your passwords.", Toast.LENGTH_LONG)
-                            .show();
-                }
-            } catch (Exception e) {
-                Toast.makeText(getContext(), "Failed to change password", Toast.LENGTH_SHORT).show();
-            }
-        } else {
-            Toast.makeText(getContext(), "Failed to change password. Please try again.", Toast.LENGTH_SHORT).show();
-        }
+            });
     }
 
     private void showNotificationSettings() {

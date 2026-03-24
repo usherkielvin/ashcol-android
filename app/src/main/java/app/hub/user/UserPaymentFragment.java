@@ -13,10 +13,11 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import app.hub.R;
-import app.hub.api.CompleteWorkResponse;
-import app.hub.api.PaymentDetailResponse;
 import app.hub.common.FirestoreManager;
 import app.hub.util.TokenManager;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
 
 public class UserPaymentFragment extends Fragment {
 
@@ -30,10 +31,9 @@ public class UserPaymentFragment extends Fragment {
     private FirestoreManager firestoreManager;
 
     private String ticketId;
-    private int paymentId;
-    private double amount;
-    private String serviceName;
-    private String technicianName;
+    private double amount = 0.0;
+    private String serviceName = "Service";
+    private String technicianName = "Technician";
     private String paymentMethod;
 
     public UserPaymentFragment() {
@@ -85,7 +85,6 @@ public class UserPaymentFragment extends Fragment {
 
         if (getArguments() != null) {
             ticketId = getArguments().getString(ARG_TICKET_ID);
-            paymentId = getArguments().getInt(ARG_PAYMENT_ID, 0);
             amount = getArguments().getDouble(ARG_AMOUNT, 0.0);
             serviceName = getArguments().getString(ARG_SERVICE_NAME);
             technicianName = getArguments().getString(ARG_TECH_NAME);
@@ -107,7 +106,7 @@ public class UserPaymentFragment extends Fragment {
         }
 
         btnContinuePayment.setText("Loading...");
-        btnContinuePayment.setEnabled(paymentId > 0 && amount > 0);
+        btnContinuePayment.setEnabled(false);
         listenForPendingPayment(tvServiceName, tvTechnicianName, tvAmountDue, btnContinuePayment);
         fetchPaymentDetails(tvServiceName, tvTechnicianName, tvAmountDue, btnContinuePayment);
 
@@ -123,7 +122,7 @@ public class UserPaymentFragment extends Fragment {
                 return;
             }
 
-            if (paymentId <= 0) {
+            if (amount <= 0) {
                 Toast.makeText(getContext(), "Payment details not ready yet.", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -161,7 +160,6 @@ public class UserPaymentFragment extends Fragment {
         firestoreManager.listenToPendingPayment(ticketId, new FirestoreManager.PendingPaymentListener() {
             @Override
             public void onPaymentUpdated(FirestoreManager.PendingPayment payment) {
-                paymentId = payment.paymentId;
                 amount = payment.amount;
                 if (payment.serviceName != null) {
                     serviceName = payment.serviceName;
@@ -182,7 +180,7 @@ public class UserPaymentFragment extends Fragment {
                             tvAmountDue.setText(formatAmount(amount));
                         }
                         btnContinuePayment.setText("Continue");
-                        btnContinuePayment.setEnabled(paymentId > 0 && amount > 0);
+                        btnContinuePayment.setEnabled(amount > 0);
                     });
                 }
             }
@@ -196,98 +194,72 @@ public class UserPaymentFragment extends Fragment {
 
     private void fetchPaymentDetails(TextView tvServiceName, TextView tvTechnicianName,
             TextView tvAmountDue, com.google.android.material.button.MaterialButton btnContinuePayment) {
-        if (ticketId == null) {
-            return;
-        }
+        if (ticketId == null) return;
 
-        String token = tokenManager.getToken();
-        if (token == null) {
-            return;
-        }
+        android.util.Log.d("UserPayment", "Loading payment details from Firestore for ticket: " + ticketId);
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<PaymentDetailResponse> call = apiService.getPaymentByTicketId("Bearer " + token, ticketId);
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (!isAdded()) return;
+                
+                if (documentSnapshot.exists()) {
+                    Double amountVal = documentSnapshot.getDouble("total_amount");
+                    String service = documentSnapshot.getString("service_type");
+                    String tech = documentSnapshot.getString("assigned_staff_name");
+                    String status = documentSnapshot.getString("payment_status");
+                    String method = documentSnapshot.getString("payment_method");
 
-        call.enqueue(new Callback<PaymentDetailResponse>() {
-            @Override
-            public void onResponse(Call<PaymentDetailResponse> call, Response<PaymentDetailResponse> response) {
-                if (!response.isSuccessful() || response.body() == null || !response.body().isSuccess()) {
+                    amount = amountVal != null ? amountVal : 0.0;
+                    serviceName = service != null ? service : "Service";
+                    technicianName = tech != null ? tech : "Technician";
+                    paymentMethod = method;
+
                     if (getActivity() != null) {
-                        getActivity().runOnUiThread(() -> {
-                            tvAmountDue.setText("No pending payment");
-                            btnContinuePayment.setText("Continue");
-                            btnContinuePayment.setEnabled(false);
-                        });
-                    }
-                    return;
-                }
+                        tvServiceName.setText(serviceName);
+                        tvTechnicianName.setText(technicianName);
+                        tvAmountDue.setText(formatAmount(amount));
 
-                PaymentDetailResponse.PaymentDetail payment = response.body().getPayment();
-                if (payment == null) {
-                    return;
-                }
-
-                paymentId = payment.getId();
-                amount = payment.getAmount();
-                serviceName = payment.getServiceName();
-                technicianName = payment.getTechnicianName();
-                paymentMethod = payment.getPaymentMethod();
-
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        if (serviceName != null) {
-                            tvServiceName.setText(serviceName);
-                        }
-                        if (technicianName != null) {
-                            tvTechnicianName.setText(technicianName);
-                        }
-                        if (amount > 0) {
-                            tvAmountDue.setText(formatAmount(amount));
-                        }
-
-                        boolean pending = payment.getStatus() != null
-                                && payment.getStatus().equalsIgnoreCase("pending");
+                        boolean pending = status == null || status.equalsIgnoreCase("pending");
 
                         if (isCashPayment(paymentMethod)) {
                             btnContinuePayment.setText("Awaiting Cash Collection");
                             btnContinuePayment.setEnabled(false);
                         } else {
                             btnContinuePayment.setText("Continue");
-                            btnContinuePayment.setEnabled(pending && paymentId > 0 && amount > 0);
+                            btnContinuePayment.setEnabled(pending && amount > 0);
                         }
 
                         if (!pending && amount > 0) {
                             tvAmountDue.setText("Paid");
                         }
-                    });
+                    }
+                } else {
+                    tvAmountDue.setText("No pending payment");
+                    btnContinuePayment.setEnabled(false);
                 }
-            }
-
-            @Override
-            public void onFailure(Call<PaymentDetailResponse> call, Throwable t) {
-                android.util.Log.e("UserPayment", "Failed to load payment", t);
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("UserPayment", "Failed to load payment from Firestore: " + e.getMessage());
+            });
     }
 
     private void completePayment(String method) {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(getContext(), "Please log in again.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (ticketId == null) return;
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<CompleteWorkResponse> call = apiService.payCustomerPayment("Bearer " + token, paymentId);
+        android.util.Log.d("UserPayment", "Completing payment in Firestore for ticket: " + ticketId);
 
-        call.enqueue(new Callback<CompleteWorkResponse>() {
-            @Override
-            public void onResponse(Call<CompleteWorkResponse> call, Response<CompleteWorkResponse> response) {
-                if (!response.isSuccessful() || response.body() == null || !response.body().isSuccess()) {
-                    Toast.makeText(getContext(), "Payment failed. Try again.", Toast.LENGTH_SHORT).show();
-                    return;
-                }
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("payment_status", "paid");
+        updates.put("payment_method", method);
+        updates.put("payment_at", com.google.firebase.Timestamp.now());
+        updates.put("status", "completed"); // Mark ticket as completed when paid
 
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                if (!isAdded()) return;
+                
                 UserPaymentSuccessFragment successFragment = UserPaymentSuccessFragment.newInstance();
                 Bundle args = new Bundle();
                 args.putString("payment_method", method);
@@ -297,18 +269,18 @@ public class UserPaymentFragment extends Fragment {
                 args.putDouble("amount", amount);
                 successFragment.setArguments(args);
 
-                requireActivity().getSupportFragmentManager()
-                        .beginTransaction()
-                        .replace(R.id.fragmentContainerView, successFragment)
-                        .addToBackStack(null)
-                        .commit();
-            }
-
-            @Override
-            public void onFailure(Call<CompleteWorkResponse> call, Throwable t) {
-                Toast.makeText(getContext(), "Network error. Try again.", Toast.LENGTH_SHORT).show();
-            }
-        });
+                if (getActivity() != null) {
+                    getActivity().getSupportFragmentManager().beginTransaction()
+                            .replace(R.id.fragmentContainerView, successFragment)
+                            .addToBackStack(null)
+                            .commit();
+                }
+            })
+            .addOnFailureListener(e -> {
+                if (isAdded()) {
+                    Toast.makeText(getContext(), "Payment failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
     }
 
     private boolean isOnlinePayment(String method) {

@@ -861,65 +861,6 @@ public class ServiceSelectActivity extends AppCompatActivity {
         }
     }
 
-    private void handleTicketCreationResponse(Response<CreateTicketResponse> response) {
-        submitButton.setEnabled(true);
-        submitButton.setText("Submit");
-
-        if (response.isSuccessful() && response.body() != null) {
-            CreateTicketResponse ticketResponse = response.body();
-            String ticketId = ticketResponse.getTicketId();
-            String status = ticketResponse.getStatus();
-
-            // Store ticket for instant display
-            CreateTicketResponse.TicketData ticketData = ticketResponse.getTicket();
-            if (ticketData != null) {
-                TicketListResponse.TicketItem item = TicketListResponse.fromCreateResponse(
-                        ticketData, status,
-                        ticketData.getStatus() != null ? ticketData.getStatus().getColor() : null);
-                if (item != null) {
-                    UserTicketsFragment.setPendingNewTicket(item);
-                }
-            }
-
-            Toast.makeText(ServiceSelectActivity.this, "Ticket created successfully!", Toast.LENGTH_SHORT).show();
-
-            // Navigate to confirmation screen
-            Intent intent = new Intent(ServiceSelectActivity.this, TicketConfirmationActivity.class);
-            intent.putExtra("ticket_id", ticketId != null ? ticketId : "");
-            intent.putExtra("status", status != null ? status : "Pending");
-            startActivity(intent);
-            finish();
-        } else {
-            String errorMsg = "Failed to create ticket";
-            try {
-                if (response.errorBody() != null) {
-                    String errBody = response.errorBody().string();
-                    Log.e(TAG, "Error response body: " + errBody);
-                    
-                    // Check if it's HTML (server error page)
-                    if (errBody.contains("<!DOCTYPE") || errBody.contains("<html")) {
-                        errorMsg = "Server error (HTTP " + response.code() + "). Please check your connection and try again.";
-                    } else if (errBody.length() > 200) {
-                        errorMsg = errBody.substring(0, 200) + "...";
-                    } else {
-                        errorMsg = errBody;
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error reading error body", e);
-            }
-            Log.e(TAG, "Ticket creation failed with code: " + response.code());
-            Toast.makeText(ServiceSelectActivity.this, errorMsg, Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void handleTicketCreationFailure(Throwable t) {
-        submitButton.setEnabled(true);
-        submitButton.setText("Submit");
-        Log.e(TAG, "Ticket creation failed", t);
-        Toast.makeText(ServiceSelectActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-    }
-
     private String getRegisteredName() {
         if (tokenManager == null) {
             return null;

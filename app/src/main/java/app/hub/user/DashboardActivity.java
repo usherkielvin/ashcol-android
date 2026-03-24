@@ -32,7 +32,6 @@ public class DashboardActivity extends AppCompatActivity {
     public static final String EXTRA_EMAIL = "email";
     private static final String TAG = "DashboardActivity";
 
-    private ApiService apiService;
     private TokenManager tokenManager;
     private View navIndicator;
     private BottomNavigationView bottomNavigationView;
@@ -48,7 +47,6 @@ public class DashboardActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_user_dashboard);
 
-        apiService = ApiClient.getApiService();
         tokenManager = new TokenManager(this);
         navIndicator = findViewById(R.id.navIndicator);
         bottomNavigationView = findViewById(R.id.bottomNavigationView);

@@ -26,10 +26,11 @@ import java.util.List;
 import app.hub.R;
 import app.hub.api.EmployeeResponse;
 import app.hub.api.TicketDetailResponse;
-import app.hub.api.UpdateTicketStatusRequest;
-import app.hub.api.UpdateTicketStatusResponse;
 import app.hub.map.MapViewActivity;
 import app.hub.util.TokenManager;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ManagerTicketDetailActivity extends AppCompatActivity
         implements com.google.android.gms.maps.OnMapReadyCallback {
@@ -201,75 +202,39 @@ public class ManagerTicketDetailActivity extends AppCompatActivity
     }
 
     private void loadTicketDetails() {
-        if (ticketId == null) {
-            Toast.makeText(this, getString(R.string.manager_ticket_invalid_id), Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-
-        android.util.Log.d("ManagerTicketDetail", "Loading ticket from Firebase: " + ticketId);
-
-        com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("tickets").document(ticketId).get()
-                .addOnSuccessListener(documentSnapshot -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    if (documentSnapshot.exists()) {
-                        currentTicket = documentSnapshot.toObject(TicketDetailResponse.TicketDetail.class);
-                        if (currentTicket != null) {
-                            if (currentTicket.getTicketId() == null) currentTicket.setTicketId(documentSnapshot.getId());
-                            displayTicketDetails(currentTicket);
-                        } else {
-                            Toast.makeText(this, getString(R.string.manager_ticket_invalid_data), Toast.LENGTH_SHORT).show();
-                            finish();
-                        }
-                    } else {
-                        Toast.makeText(this, "Ticket not found in database", Toast.LENGTH_SHORT).show();
-                        finish();
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    currentTicket = documentSnapshot.toObject(TicketDetailResponse.TicketDetail.class);
+                    if (currentTicket != null) {
+                        displayTicketDetails(currentTicket);
                     }
-                })
-                .addOnFailureListener(e -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    android.util.Log.e("ManagerTicketDetail", "Error fetching from Firebase: " + e.getMessage(), e);
-                    Toast.makeText(this, "Network error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, getString(R.string.manager_ticket_invalid_id), Toast.LENGTH_SHORT).show();
                     finish();
-                });
+                }
+            })
+            .addOnFailureListener(e -> {
+                Toast.makeText(this, getString(R.string.manager_ticket_error_loading, e.getMessage()), Toast.LENGTH_SHORT).show();
+                finish();
+            });
     }
 
     private void loadEmployees() {
-        List<EmployeeResponse.Employee> cached = ManagerDataManager.getCachedEmployees();
-        if (cached != null && !cached.isEmpty()) {
-            employees.clear();
-            employees.addAll(cached);
-            setupTechnicianSpinner();
-        } else {
-            String branch = ManagerDataManager.getCachedBranchName();
-            if (branch == null) branch = tokenManager.getUserBranch();
-            if (branch == null || branch.isEmpty()) return;
-            
-            com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users")
-                .whereEqualTo("branch", branch)
-                .whereEqualTo("role", "technician")
-                .get()
-                .addOnSuccessListener(snaps -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    employees.clear();
-                    for (com.google.firebase.firestore.DocumentSnapshot doc : snaps) {
-                        EmployeeResponse.Employee emp = new EmployeeResponse.Employee();
-                        String id = doc.getId();
-                        emp.setId(Math.abs(id.hashCode()));
-                        emp.setFirstName(doc.getString("firstName"));
-                        emp.setLastName(doc.getString("lastName"));
-                        emp.setEmail(doc.getString("email"));
-                        emp.setProfilePhoto(doc.getString("profilePhoto"));
-                        employees.add(emp);
-                    }
-                    android.util.Log.d("ManagerTicketDetail", "Loaded " + employees.size() + " technicians from Firebase");
-                    setupTechnicianSpinner();
-                })
-                .addOnFailureListener(e -> {
-                    android.util.Log.e("ManagerTicketDetail", "Failed to load employees from Firebase", e);
-                });
-        }
+        String branchName = ManagerDataManager.getCachedBranchName();
+        if (branchName == null) return;
+
+        FirebaseFirestore.getInstance().collection("users")
+            .whereEqualTo("branch", branchName)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                employees.clear();
+                for (com.google.firebase.firestore.QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    employees.add(doc.toObject(EmployeeResponse.Employee.class));
+                }
+                setupTechnicianSpinner();
+            });
     }
     
     private void setupTechnicianSpinner() {
@@ -481,66 +446,20 @@ public class ManagerTicketDetailActivity extends AppCompatActivity
         }
     }
 
-    private void updateTicketStatus(String status) {
-        if (ticketId == null) {
-            Toast.makeText(this, getString(R.string.manager_ticket_invalid_id), Toast.LENGTH_SHORT).show();
-            return;
-        }
 
-        android.util.Log.d("ManagerTicketDetail", "Updating ticket status to: " + status);
-
-        com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("tickets")
-            .document(ticketId)
-            .update("status", status)
-            .addOnSuccessListener(aVoid -> {
-                android.util.Log.d("ManagerTicketDetail", "Status update success");
-                
-                ManagerDataManager.updateTicketStatusInCache(ticketId, status);
-
-                Toast.makeText(ManagerTicketDetailActivity.this, "Ticket status updated successfully", Toast.LENGTH_SHORT).show();
-
-                ManagerDataManager.refreshTickets(getApplicationContext(), new ManagerDataManager.DataLoadCallback() {
-                    @Override
-                    public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {}
-
-                    @Override
-                    public void onTicketsLoaded(List<app.hub.api.TicketListResponse.TicketItem> tickets) {
-                        runOnUiThread(ManagerTicketDetailActivity.this::finish);
-                    }
-
-                    @Override
-                    public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats,
-                            List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {}
-
-                    @Override
-                    public void onLoadComplete() {}
-
-                    @Override
-                    public void onLoadError(String error) {
-                        runOnUiThread(ManagerTicketDetailActivity.this::finish);
-                    }
-                });
-            })
-            .addOnFailureListener(e -> {
-                android.util.Log.e("ManagerTicketDetail", "Status update failed", e);
-                Toast.makeText(ManagerTicketDetailActivity.this, 
-                    getString(R.string.manager_ticket_status_update_failed, e.getMessage()), 
-                    Toast.LENGTH_SHORT).show();
-            });
-    }
 
     private void assignTechnicianFromDetail() {
         // Validate that a technician is selected
-        if (spinnerTechnician == null || spinnerTechnician.getText() == null || 
+        if (spinnerTechnician == null || spinnerTechnician.getText() == null ||
             spinnerTechnician.getText().toString().trim().isEmpty()) {
             Toast.makeText(this, "Please select a technician", Toast.LENGTH_SHORT).show();
             return;
         }
-        
+
         // Find the selected technician
         String selectedTechnicianName = spinnerTechnician.getText().toString().trim();
         EmployeeResponse.Employee selectedTechnician = null;
-        
+
         for (EmployeeResponse.Employee emp : employees) {
             String name = (emp.getFirstName() != null ? emp.getFirstName() : "") +
                     " " + (emp.getLastName() != null ? emp.getLastName() : "");
@@ -552,66 +471,29 @@ public class ManagerTicketDetailActivity extends AppCompatActivity
                 break;
             }
         }
-        
+
         if (selectedTechnician == null) {
             Toast.makeText(this, "Please select a valid technician", Toast.LENGTH_SHORT).show();
             return;
         }
-        
-        // Check if the technician is busy
-        if (selectedTechnician.getTicketCount() > 0) {
-            Toast.makeText(this, "This technician is currently busy. Please select an available technician.", 
-                          Toast.LENGTH_LONG).show();
-            spinnerTechnician.setText(""); // Clear the selection
-            return;
-        }
-        
-        // Get the notes
-        com.google.android.material.textfield.TextInputEditText etNotes = findViewById(R.id.etNotes);
-        String notes = etNotes != null && etNotes.getText() != null ? 
-                       etNotes.getText().toString().trim() : "";
-        
-        // Use current date and time as default
-        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault());
-        java.text.SimpleDateFormat stf = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault());
-        String scheduledDate = sdf.format(new java.util.Date());
-        String scheduledTime = stf.format(new java.util.Date());
-        
-        // Call API to assign technician
-        assignTechnicianToTicket(selectedTechnician.getId(), scheduledDate, scheduledTime, notes, selectedTechnicianName);
-    }
-    
-    private void assignTechnicianToTicket(int technicianId, String scheduledDate, String scheduledTime, 
-                                          String notes, String technicianName) {
-        if (ticketId == null) {
-            Toast.makeText(this, "Invalid ticket ID.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        android.util.Log.d("ManagerTicketDetail", "Assigning technician ID: " + technicianId + " Name: " + technicianName);
-        
-        java.util.Map<String, Object> updates = new java.util.HashMap<>();
-        updates.put("scheduled_date", scheduledDate);
-        updates.put("scheduled_time", scheduledTime);
-        updates.put("schedule_notes", notes);
-        updates.put("assigned_staff", technicianName);
-        updates.put("assigned_staff_id", technicianId);
+
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("assigned_staff_id", selectedTechnician.getId());
+        updates.put("assigned_staff", selectedTechnicianName);
         updates.put("status", "scheduled");
-        updates.put("updated_at", System.currentTimeMillis());
-        
-        com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("tickets")
-            .document(ticketId)
+
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
             .update(updates)
             .addOnSuccessListener(aVoid -> {
-                // Show confirmation dialog
-                showAssignmentConfirmation(technicianName, scheduledDate, scheduledTime);
+                Toast.makeText(this, "Technician assigned successfully", Toast.LENGTH_SHORT).show();
+                finish();
             })
             .addOnFailureListener(e -> {
-                Toast.makeText(ManagerTicketDetailActivity.this, 
-                        "Failed to assign: " + e.getMessage(), 
-                        Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Failed to assign technician: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             });
     }
+    
+
     
     private void showAssignmentConfirmation(String technicianName, String scheduledDate, String scheduledTime) {
         // Format the service name (only service type, no customer name)
@@ -655,21 +537,44 @@ public class ManagerTicketDetailActivity extends AppCompatActivity
         bottomSheet.show(getSupportFragmentManager(), "AssignConfirmBottomSheet");
     }
     
+    private void updateTicketStatus(String status) {
+        if (ticketId == null) return;
+
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("status", status);
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
+
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                Toast.makeText(this, "Ticket updated to " + status, Toast.LENGTH_SHORT).show();
+                loadTicketDetails();
+            })
+            .addOnFailureListener(e -> {
+                Toast.makeText(this, "Failed to update status: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            });
+    }
+
     private void showCancelConfirmDialog() {
-        CancelConfirmDialog dialog = CancelConfirmDialog.newInstance();
-        dialog.setOnConfirmClickListener(new CancelConfirmDialog.OnConfirmClickListener() {
-            @Override
-            public void onConfirmYes() {
-                // Show the cancellation reason bottom sheet
-                showCancelReasonBottomSheet();
-            }
-            
-            @Override
-            public void onConfirmNo() {
-                // Do nothing, dialog will dismiss
-            }
-        });
-        dialog.show(getSupportFragmentManager(), "CancelConfirmDialog");
+        new AlertDialog.Builder(this)
+                .setTitle("Reject Ticket")
+                .setMessage("Are you sure you want to reject this ticket? This action cannot be undone.")
+                .setPositiveButton("Reject", (dialog, which) -> {
+                    Map<String, Object> updates = new HashMap<>();
+                    updates.put("status", "rejected");
+
+                    FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+                        .update(updates)
+                        .addOnSuccessListener(aVoid -> {
+                            Toast.makeText(this, "Ticket has been rejected", Toast.LENGTH_SHORT).show();
+                            finish();
+                        })
+                        .addOnFailureListener(e -> {
+                            Toast.makeText(this, "Failed to reject ticket: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        });
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
     
     private void showCancelReasonBottomSheet() {

@@ -8,7 +8,11 @@ import java.util.List;
 
 import app.hub.api.EmployeeScheduleResponse;
 import app.hub.api.TicketListResponse;
-import app.hub.util.TokenManager;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 /**
  * Centralized data manager for employee/technician
@@ -52,62 +56,49 @@ public class EmployeeDataManager {
             return;
         }
         
-        isLoadingTickets = true;
-        TokenManager tokenManager = new TokenManager(context);
-        String token = tokenManager.getAuthToken();
-        
-        if (token == null) {
-            isLoadingTickets = false;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             if (callback != null) {
-                callback.onError("No auth token");
+                callback.onError("User not logged in");
             }
             return;
         }
-        
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketListResponse> call = apiService.getEmployeeTickets(token);
-        
-        call.enqueue(new Callback<TicketListResponse>() {
-            @Override
-            public void onResponse(Call<TicketListResponse> call, Response<TicketListResponse> response) {
+
+        isLoadingTickets = true;
+        Log.d(TAG, "Loading tickets from Firestore for user: " + user.getUid());
+
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 isLoadingTickets = false;
-                
-                if (response.isSuccessful() && response.body() != null) {
-                    TicketListResponse ticketResponse = response.body();
-                    
-                    if (ticketResponse.isSuccess() && ticketResponse.getTickets() != null) {
-                        cachedTickets = new ArrayList<>(ticketResponse.getTickets());
-                        lastTicketLoadTime = System.currentTimeMillis();
-                        
-                        Log.d(TAG, "Tickets loaded and cached: " + cachedTickets.size());
-                        
-                        if (callback != null) {
-                            callback.onSuccess(new ArrayList<>(cachedTickets));
-                        }
-                    } else {
-                        if (callback != null) {
-                            callback.onError("API returned no tickets");
-                        }
-                    }
-                } else {
-                    if (callback != null) {
-                        callback.onError("API error: " + response.code());
+                List<TicketListResponse.TicketItem> tickets = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    TicketListResponse.TicketItem ticket = doc.toObject(TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        tickets.add(ticket);
                     }
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<TicketListResponse> call, Throwable t) {
-                isLoadingTickets = false;
-                Log.e(TAG, "Failed to load tickets", t);
+                
+                cachedTickets = new ArrayList<>(tickets);
+                lastTicketLoadTime = System.currentTimeMillis();
+                
+                Log.d(TAG, "Tickets loaded and cached from Firestore: " + cachedTickets.size());
                 
                 if (callback != null) {
-                    callback.onError(t.getMessage());
+                    callback.onSuccess(new ArrayList<>(cachedTickets));
                 }
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                isLoadingTickets = false;
+                Log.e(TAG, "Error loading tickets from Firestore: " + e.getMessage());
+                if (callback != null) {
+                    callback.onError(e.getMessage());
+                }
+            });
     }
-    
+
     /**
      * Load schedule with caching
      */
@@ -130,52 +121,51 @@ public class EmployeeDataManager {
             return;
         }
         
-        isLoadingSchedule = true;
-        TokenManager tokenManager = new TokenManager(context);
-        String token = tokenManager.getAuthToken();
-        
-        if (token == null) {
-            isLoadingSchedule = false;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             if (callback != null) {
-                callback.onError("No auth token");
+                callback.onError("User not logged in");
             }
             return;
         }
-        
-        ApiService apiService = ApiClient.getApiService();
-        Call<EmployeeScheduleResponse> call = apiService.getEmployeeSchedule(token);
-        
-        call.enqueue(new Callback<EmployeeScheduleResponse>() {
-            @Override
-            public void onResponse(Call<EmployeeScheduleResponse> call, Response<EmployeeScheduleResponse> response) {
+
+        isLoadingSchedule = true;
+        Log.d(TAG, "Loading schedule from Firestore for user: " + user.getUid());
+
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("assigned_staff_id", user.getUid())
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 isLoadingSchedule = false;
-                
-                if (response.isSuccessful() && response.body() != null) {
-                    cachedSchedule = response.body();
-                    lastScheduleLoadTime = System.currentTimeMillis();
-                    
-                    Log.d(TAG, "Schedule loaded and cached");
-                    
-                    if (callback != null) {
-                        callback.onSuccess(cachedSchedule);
-                    }
-                } else {
-                    if (callback != null) {
-                        callback.onError("API error: " + response.code());
+                List<EmployeeScheduleResponse.ScheduledTicket> tickets = new ArrayList<>();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    EmployeeScheduleResponse.ScheduledTicket ticket = doc.toObject(EmployeeScheduleResponse.ScheduledTicket.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        tickets.add(ticket);
                     }
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<EmployeeScheduleResponse> call, Throwable t) {
-                isLoadingSchedule = false;
-                Log.e(TAG, "Failed to load schedule", t);
+                
+                EmployeeScheduleResponse scheduleResponse = new EmployeeScheduleResponse();
+                scheduleResponse.setSuccess(true);
+                scheduleResponse.setTickets(tickets);
+                
+                cachedSchedule = scheduleResponse;
+                lastScheduleLoadTime = System.currentTimeMillis();
+                
+                Log.d(TAG, "Schedule loaded and cached from Firestore: " + tickets.size());
                 
                 if (callback != null) {
-                    callback.onError(t.getMessage());
+                    callback.onSuccess(cachedSchedule);
                 }
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                isLoadingSchedule = false;
+                Log.e(TAG, "Error loading schedule from Firestore: " + e.getMessage());
+                if (callback != null) {
+                    callback.onError(e.getMessage());
+                }
+            });
     }
     
     /**

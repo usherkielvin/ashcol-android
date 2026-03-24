@@ -11,6 +11,7 @@ public class TokenManager {
     private static final String PREF_NAME = "auth_pref";
     private static final String KEY_TOKEN = "token";
     private static final String KEY_USER_ID = "user_id";
+    private static final String KEY_UID = "firebase_uid";
     private static final String KEY_EMAIL = "email";
     private static final String KEY_NAME = "name";
     private static final String KEY_ROLE = "role";
@@ -97,6 +98,22 @@ public class TokenManager {
 
     public int getUserIdInt() {
         return sharedPreferences.getInt(KEY_USER_ID, -1);
+    }
+
+    public void clearToken() {
+        sharedPreferences.edit().remove(KEY_TOKEN).apply();
+    }
+
+    public void clearAuthToken() {
+        sharedPreferences.edit().remove(KEY_TOKEN).apply();
+    }
+
+    public void saveUid(String uid) {
+        sharedPreferences.edit().putString(KEY_UID, uid).apply();
+    }
+
+    public String getUid() {
+        return sharedPreferences.getString(KEY_UID, null);
     }
 
     public String getUserId() {

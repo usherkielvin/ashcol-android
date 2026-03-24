@@ -28,6 +28,13 @@ import com.google.android.material.textfield.MaterialAutoCompleteTextView;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -36,15 +43,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 
 import app.hub.R;
 import app.hub.BuildConfig;
-import app.hub.api.ProfilePhotoResponse;
-import app.hub.api.UpdateProfileRequest;
-import app.hub.api.UserResponse;
-import app.hub.api.DeleteAccountRequest;
-import app.hub.api.DeleteAccountResponse;
+import com.google.firebase.Timestamp;
 import app.hub.util.TokenManager;
 
 public class EmployeePersonalInfoFragment extends Fragment {
@@ -158,37 +163,28 @@ public class EmployeePersonalInfoFragment extends Fragment {
     }
 
     private void loadProfile() {
-        setLoading(true);
-        String authToken = tokenManager.getAuthToken();
-        if (authToken == null) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
             setLoading(false);
-            Toast.makeText(requireContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<UserResponse> call = apiService.getUser(authToken);
-        call.enqueue(new Callback<UserResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<UserResponse> call, @NonNull Response<UserResponse> response) {
-                if (!isAdded()) return;
+        setLoading(true);
 
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    UserResponse.Data data = response.body().getData();
-                    if (data != null) {
-                        bindProfile(data);
-                    }
+        FirebaseFirestore.getInstance().collection("users").document(user.getUid())
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                setLoading(false);
+                if (documentSnapshot.exists()) {
+                    bindProfile(documentSnapshot);
                 }
+            })
+            .addOnFailureListener(e -> {
                 setLoading(false);
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<UserResponse> call, @NonNull Throwable t) {
-                if (!isAdded()) return;
-                setLoading(false);
-                Toast.makeText(requireContext(), "Failed to load profile.", Toast.LENGTH_SHORT).show();
-            }
-        });
+                if (isAdded()) {
+                    Toast.makeText(getContext(), "Failed to load profile", Toast.LENGTH_SHORT).show();
+                }
+            });
     }
 
     private void setLoading(boolean isLoading) {
@@ -200,61 +196,55 @@ public class EmployeePersonalInfoFragment extends Fragment {
         }
     }
 
-    private void bindProfile(UserResponse.Data data) {
-        if (tvEmail != null) {
-            tvEmail.setText(data.getEmail() != null ? data.getEmail() : "--");
-        }
-        if (tvRole != null) {
-            tvRole.setText(data.getRole() != null ? data.getRole() : "--");
-        }
-        if (tvBranch != null) {
-            String branch = data.getBranch() != null ? data.getBranch() : tokenManager.getCachedBranch();
-            tvBranch.setText(branch != null ? branch : "--");
+    private void bindProfile(DocumentSnapshot doc) {
+        if (!isAdded() || doc == null) {
+            return;
         }
 
-        if (etUsername != null) {
-            etUsername.setText(data.getUsername() != null ? data.getUsername() : "");
+        String firstName = doc.getString("first_name");
+        String lastName = doc.getString("last_name");
+        String email = doc.getString("email");
+        String role = doc.getString("role");
+        String branch = doc.getString("branch");
+        String gender = doc.getString("gender");
+        String birthdate = doc.getString("birthdate");
+        String username = doc.getString("username");
+        String phone = doc.getString("phone");
+        String location = doc.getString("location");
+        String profilePhoto = doc.getString("profile_photo");
+
+        if (tvEmail != null) tvEmail.setText(email != null ? email : "--");
+        if (tvRole != null) tvRole.setText(role != null ? capitalizeFirst(role) : "Employee");
+        if (tvBranch != null) tvBranch.setText(branch != null ? branch : "No branch assigned");
+        
+        if (inputFirstName != null) inputFirstName.setText(firstName != null ? firstName : "");
+        if (inputLastName != null) inputLastName.setText(lastName != null ? lastName : "");
+        if (etUsername != null) etUsername.setText(username != null ? username : "");
+        if (inputPhone != null) inputPhone.setText(phone != null ? phone : "");
+        if (inputLocation != null) inputLocation.setText(location != null ? location : "");
+        
+        if (tvGender != null && gender != null) {
+            tvGender.setText(gender, false);
+            selectedGender = gender;
+        }
+        
+        if (tvBirthdate != null && birthdate != null) {
+            selectedBirthdate = birthdate;
+            tvBirthdate.setText(formatBirthdateForDisplay(birthdate));
         }
 
-        if (inputPhone != null) {
-            inputPhone.setText(data.getPhone() != null ? data.getPhone() : "");
-        }
-
-        if (tvGender != null) {
-            selectedGender = data.getGender();
-            tvGender.setText(selectedGender != null ? selectedGender : "", false);
-        }
-
-        if (tvBirthdate != null) {
-            selectedBirthdate = data.getBirthdate();
-            tvBirthdate.setText(formatBirthdateForDisplay(selectedBirthdate));
-        }
-
-        if (inputFirstName != null) {
-            inputFirstName.setText(data.getFirstName() != null ? data.getFirstName() : "");
-        }
-        if (inputLastName != null) {
-            inputLastName.setText(data.getLastName() != null ? data.getLastName() : "");
-        }
-        if (inputLocation != null) {
-            String location = data.getLocation();
-            if (location == null || location.trim().isEmpty()) {
-                location = data.getCity();
-            }
-            if (location == null || location.trim().isEmpty()) {
-                location = data.getRegion();
-            }
-            inputLocation.setText(location != null ? location : "");
-        }
-
-        String profilePhoto = data.getProfilePhoto();
-        if (profilePhoto != null && !profilePhoto.trim().isEmpty()) {
+        if (profilePhoto != null && !profilePhoto.isEmpty()) {
             loadProfileImageFromUrl(profilePhoto);
+        } else {
+            if (imgProfile != null) {
+                imgProfile.setImageResource(R.mipmap.ic_launchericons_round);
+            }
         }
+    }
 
-        if (imgProfile != null && data.getProfilePhoto() != null && !data.getProfilePhoto().isEmpty()) {
-            loadProfileImageFromUrl(data.getProfilePhoto());
-        }
+    private String capitalizeFirst(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1).toLowerCase();
     }
 
     private void setupGenderDropdown() {
@@ -374,105 +364,80 @@ public class EmployeePersonalInfoFragment extends Fragment {
     }
 
     private void uploadProfilePhoto(Uri imageUri) {
-        if (getContext() == null) return;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
 
-        String authToken = tokenManager.getAuthToken();
-        if (authToken == null) {
-            Toast.makeText(requireContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        setLoading(true);
 
-        File tempFile = createTempFileFromUri(imageUri);
-        if (tempFile == null) {
-            Toast.makeText(requireContext(), "Unable to read image.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        StorageReference storageRef = FirebaseStorage.getInstance().getReference()
+            .child("profile_photos")
+            .child(user.getUid() + ".jpg");
 
-        RequestBody requestBody = RequestBody.create(MediaType.parse("image/*"), tempFile);
-        MultipartBody.Part body = MultipartBody.Part.createFormData("photo", tempFile.getName(), requestBody);
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<ProfilePhotoResponse> call = apiService.uploadProfilePhoto(authToken, body);
-        call.enqueue(new Callback<ProfilePhotoResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<ProfilePhotoResponse> call,
-                    @NonNull Response<ProfilePhotoResponse> response) {
-                if (!isAdded()) return;
-                if (response.isSuccessful()) {
-                    if (imgProfile != null) {
-                        imgProfile.setImageURI(imageUri);
-                    }
-                    saveProfileImage(imageUri);
-                    
-                    // Clear manager cache so updated photo shows immediately
-                    app.hub.manager.ManagerDataManager.clearEmployeeCache();
-                    
-                    Toast.makeText(requireContext(), "Profile photo updated.", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(requireContext(), "Failed to upload photo.", Toast.LENGTH_SHORT).show();
+        storageRef.putFile(imageUri)
+            .addOnSuccessListener(taskSnapshot -> {
+                storageRef.getDownloadUrl().addOnSuccessListener(downloadUri -> {
+                    FirebaseFirestore.getInstance().collection("users").document(user.getUid())
+                        .update("profile_photo", downloadUri.toString())
+                        .addOnSuccessListener(aVoid -> {
+                            setLoading(false);
+                            if (isAdded()) {
+                                if (imgProfile != null) {
+                                    imgProfile.setImageURI(imageUri);
+                                }
+                                saveProfileImage(imageUri);
+                                
+                                // Clear manager cache so updated photo shows immediately
+                                app.hub.manager.ManagerDataManager.clearEmployeeCache();
+                                
+                                Toast.makeText(getContext(), "Profile photo updated", Toast.LENGTH_SHORT).show();
+                                loadProfile();
+                            }
+                        })
+                        .addOnFailureListener(e -> {
+                            setLoading(false);
+                            if (isAdded()) {
+                                Toast.makeText(getContext(), "Failed to update profile info", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                });
+            })
+            .addOnFailureListener(e -> {
+                setLoading(false);
+                if (isAdded()) {
+                    Toast.makeText(getContext(), "Upload failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ProfilePhotoResponse> call, @NonNull Throwable t) {
-                if (!isAdded()) return;
-                Toast.makeText(requireContext(), "Network error. Please try again.", Toast.LENGTH_SHORT).show();
-            }
-        });
+            });
     }
 
     private void deleteProfilePhoto() {
-        String authToken = tokenManager.getAuthToken();
-        if (authToken == null) {
-            Toast.makeText(requireContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<ProfilePhotoResponse> call = apiService.deleteProfilePhoto(authToken);
-        call.enqueue(new Callback<ProfilePhotoResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<ProfilePhotoResponse> call,
-                    @NonNull Response<ProfilePhotoResponse> response) {
-                if (!isAdded()) return;
-                if (imgProfile != null) {
-                    imgProfile.setImageResource(R.mipmap.ic_launchericons_round);
+        setLoading(true);
+
+        FirebaseFirestore.getInstance().collection("users").document(user.getUid())
+            .update("profile_photo", null)
+            .addOnSuccessListener(aVoid -> {
+                setLoading(false);
+                if (isAdded()) {
+                    if (imgProfile != null) {
+                        imgProfile.setImageResource(R.mipmap.ic_launchericons_round);
+                    }
+                    clearCachedProfileImage();
+                    
+                    // Clear manager cache so removed photo reflects immediately
+                    app.hub.manager.ManagerDataManager.clearEmployeeCache();
+                    
+                    Toast.makeText(getContext(), "Profile photo removed", Toast.LENGTH_SHORT).show();
+                    loadProfile();
                 }
-                clearCachedProfileImage();
-                
-                // Clear manager cache so removed photo reflects immediately
-                app.hub.manager.ManagerDataManager.clearEmployeeCache();
-                
-                Toast.makeText(requireContext(), "Profile photo removed.", Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ProfilePhotoResponse> call, @NonNull Throwable t) {
-                if (!isAdded()) return;
-                Toast.makeText(requireContext(), "Network error. Please try again.", Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-    private File createTempFileFromUri(Uri uri) {
-        try {
-            InputStream inputStream = requireContext().getContentResolver().openInputStream(uri);
-            if (inputStream == null) return null;
-
-            File tempFile = File.createTempFile("profile_upload_", ".jpg", requireContext().getCacheDir());
-            FileOutputStream outputStream = new FileOutputStream(tempFile);
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, read);
-            }
-            outputStream.flush();
-            outputStream.close();
-            inputStream.close();
-            return tempFile;
-        } catch (IOException e) {
-            return null;
-        }
+            })
+            .addOnFailureListener(e -> {
+                setLoading(false);
+                if (isAdded()) {
+                    Toast.makeText(getContext(), "Failed to remove photo", Toast.LENGTH_SHORT).show();
+                }
+            });
     }
 
     private void loadProfileImageFromUrl(String url) {
@@ -553,6 +518,9 @@ public class EmployeePersonalInfoFragment extends Fragment {
     }
 
     private void saveProfile() {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
+
         if (layoutFirstName != null) layoutFirstName.setError(null);
         if (layoutLastName != null) layoutLastName.setError(null);
 
@@ -568,50 +536,36 @@ public class EmployeePersonalInfoFragment extends Fragment {
             return;
         }
 
-        String authToken = tokenManager.getAuthToken();
-        if (authToken == null) {
-            Toast.makeText(requireContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
         if (btnSave != null) {
             btnSave.setEnabled(false);
             btnSave.setText("Saving...");
         }
 
-        UpdateProfileRequest request = new UpdateProfileRequest(firstName, lastName, username,
-            phone, location, gender, birthdate);
-        ApiService apiService = ApiClient.getApiService();
-        Call<UserResponse> call = apiService.updateUser(authToken, request);
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("first_name", firstName);
+        updates.put("last_name", lastName);
+        updates.put("phone", phone);
+        updates.put("location", location);
+        updates.put("gender", gender);
+        updates.put("birthdate", birthdate);
+        updates.put("updated_at", Timestamp.now());
 
-        call.enqueue(new Callback<UserResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<UserResponse> call, @NonNull Response<UserResponse> response) {
+        FirebaseFirestore.getInstance().collection("users").document(user.getUid())
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
                 if (!isAdded()) return;
                 restoreSaveButton();
-
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    UserResponse.Data data = response.body().getData();
-                    if (data != null) {
-                        String fullName = (data.getFirstName() != null ? data.getFirstName() : "")
-                                + " " + (data.getLastName() != null ? data.getLastName() : "");
-                        tokenManager.saveName(fullName.trim());
-                        Toast.makeText(requireContext(), "Profile updated.", Toast.LENGTH_SHORT).show();
-                        bindProfile(data);
-                        navigateBack();
-                    }
-                } else {
-                    Toast.makeText(requireContext(), "Failed to update profile.", Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<UserResponse> call, @NonNull Throwable t) {
+                String fullName = firstName + " " + lastName;
+                tokenManager.saveName(fullName.trim());
+                Toast.makeText(requireContext(), "Profile updated.", Toast.LENGTH_SHORT).show();
+                loadProfile();
+                navigateBack();
+            })
+            .addOnFailureListener(e -> {
                 if (!isAdded()) return;
                 restoreSaveButton();
-                Toast.makeText(requireContext(), "Network error. Please try again.", Toast.LENGTH_SHORT).show();
-            }
-        });
+                Toast.makeText(requireContext(), "Update failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            });
     }
 
     private void restoreSaveButton() {
@@ -712,40 +666,50 @@ public class EmployeePersonalInfoFragment extends Fragment {
     }
 
     private void deleteAccount(String password) {
-        String authToken = tokenManager.getAuthToken();
-        if (authToken == null) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || user.getEmail() == null) {
             Toast.makeText(requireContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        ApiService apiService = ApiClient.getApiService();
-        DeleteAccountRequest request = new DeleteAccountRequest(password);
-        Call<DeleteAccountResponse> call = apiService.deleteAccount(authToken, request);
-        call.enqueue(new Callback<DeleteAccountResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<DeleteAccountResponse> call,
-                    @NonNull Response<DeleteAccountResponse> response) {
-                if (!isAdded()) return;
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    tokenManager.clear();
-                    Toast.makeText(requireContext(), "Account deleted.", Toast.LENGTH_SHORT).show();
-                    if (getActivity() != null) {
-                        Intent intent = new Intent(getActivity(), app.hub.common.MainActivity.class);
-                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
-                        getActivity().finish();
-                    }
-                } else {
-                    Toast.makeText(requireContext(), "Failed to delete account.", Toast.LENGTH_SHORT).show();
+        // Re-authenticate user before deletion
+        com.google.firebase.auth.AuthCredential credential = com.google.firebase.auth.EmailAuthProvider.getCredential(user.getEmail(), password);
+        user.reauthenticate(credential)
+            .addOnSuccessListener(aVoid -> {
+                // Delete Firestore data first
+                FirebaseFirestore.getInstance().collection("users").document(user.getUid())
+                    .delete()
+                    .addOnSuccessListener(aVoid1 -> {
+                        // Then delete Auth account
+                        user.delete()
+                            .addOnSuccessListener(aVoid2 -> {
+                                if (!isAdded()) return;
+                                tokenManager.clear();
+                                Toast.makeText(requireContext(), "Account deleted.", Toast.LENGTH_SHORT).show();
+                                if (getActivity() != null) {
+                                    Intent intent = new Intent(getActivity(), app.hub.common.MainActivity.class);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    startActivity(intent);
+                                    getActivity().finish();
+                                }
+                            })
+                            .addOnFailureListener(e -> {
+                                if (isAdded()) {
+                                    Toast.makeText(requireContext(), "Failed to delete auth account: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                }
+                            });
+                    })
+                    .addOnFailureListener(e -> {
+                        if (isAdded()) {
+                            Toast.makeText(requireContext(), "Failed to delete user data: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                    });
+            })
+            .addOnFailureListener(e -> {
+                if (isAdded()) {
+                    Toast.makeText(requireContext(), "Re-authentication failed. Please check your password.", Toast.LENGTH_LONG).show();
                 }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<DeleteAccountResponse> call, @NonNull Throwable t) {
-                if (!isAdded()) return;
-                Toast.makeText(requireContext(), "Network error. Please try again.", Toast.LENGTH_SHORT).show();
-            }
-        });
+            });
     }
 
     private void navigateBack() {

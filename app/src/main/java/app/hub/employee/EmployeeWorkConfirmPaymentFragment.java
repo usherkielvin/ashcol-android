@@ -18,12 +18,10 @@ import app.hub.api.CompleteWorkResponse;
 import app.hub.api.PaymentDetailResponse;
 import app.hub.common.FirestoreManager;
 import app.hub.util.TokenManager;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Fragment shown to technician after requesting payment from customer.
- * Displays ticket details and confirmation that payment request was sent.
- * Listens for payment status changes and auto-closes when customer pays online.
- */
 public class EmployeeWorkConfirmPaymentFragment extends Fragment {
 
     private static final String ARG_TICKET_ID = "ticket_id";
@@ -35,12 +33,10 @@ public class EmployeeWorkConfirmPaymentFragment extends Fragment {
     private String customerName;
     private String serviceName;
     private double amount;
-    private int paymentId = 0;
-    
     private TokenManager tokenManager;
     private FirestoreManager firestoreManager;
-    private MaterialButton btnPaymentConfirmed;
     private TextView tvPaymentStatus;
+    private com.google.android.material.button.MaterialButton btnPaymentConfirmed;
 
     public EmployeeWorkConfirmPaymentFragment() {
         // Required empty public constructor
@@ -125,42 +121,24 @@ public class EmployeeWorkConfirmPaymentFragment extends Fragment {
     }
 
     private void loadPaymentDetails() {
-        if (ticketId == null || tokenManager == null) {
-            return;
-        }
+        if (ticketId == null) return;
 
-        String token = tokenManager.getToken();
-        if (token == null) {
-            return;
-        }
+        android.util.Log.d("EmployeePaymentConfirm", "Loading payment details from Firestore: " + ticketId);
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<PaymentDetailResponse> call = apiService.getPaymentByTicketId("Bearer " + token, ticketId);
-
-        call.enqueue(new Callback<PaymentDetailResponse>() {
-            @Override
-            public void onResponse(Call<PaymentDetailResponse> call, Response<PaymentDetailResponse> response) {
-                if (!isAdded() || response.body() == null || !response.body().isSuccess()) {
-                    return;
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (!isAdded()) return;
+                
+                if (documentSnapshot.exists()) {
+                    String status = documentSnapshot.getString("payment_status");
+                    String method = documentSnapshot.getString("payment_method");
+                    updatePaymentUI(status, method);
                 }
-
-                PaymentDetailResponse.PaymentDetail payment = response.body().getPayment();
-                if (payment == null) {
-                    return;
-                }
-
-                paymentId = payment.getId();
-                String status = payment.getStatus();
-                String method = payment.getPaymentMethod();
-
-                updatePaymentUI(status, method);
-            }
-
-            @Override
-            public void onFailure(Call<PaymentDetailResponse> call, Throwable t) {
-                android.util.Log.e("EmployeePaymentConfirm", "Failed to load payment", t);
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("EmployeePaymentConfirm", "Failed to load payment from Firestore: " + e.getMessage());
+            });
     }
 
     private void startPaymentListener() {
@@ -176,7 +154,6 @@ public class EmployeeWorkConfirmPaymentFragment extends Fragment {
                     return;
                 }
 
-                paymentId = payment.paymentId;
                 String status = payment.status;
                 String method = payment.paymentMethod;
 
@@ -245,16 +222,7 @@ public class EmployeeWorkConfirmPaymentFragment extends Fragment {
     }
 
     private void confirmCashPayment() {
-        if (paymentId <= 0) {
-            Toast.makeText(getContext(), "Payment details not loaded yet.", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(getContext(), "Please log in again.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (ticketId == null) return;
 
         // Disable button while processing
         if (btnPaymentConfirmed != null) {
@@ -262,43 +230,33 @@ public class EmployeeWorkConfirmPaymentFragment extends Fragment {
             btnPaymentConfirmed.setText("Processing...");
         }
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<CompleteWorkResponse> call = apiService.payCustomerPayment("Bearer " + token, paymentId);
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("payment_status", "paid");
+        updates.put("status", "completed");
+        updates.put("completed_at", com.google.firebase.Timestamp.now());
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
 
-        call.enqueue(new Callback<CompleteWorkResponse>() {
-            @Override
-            public void onResponse(Call<CompleteWorkResponse> call, Response<CompleteWorkResponse> response) {
-                if (!isAdded()) {
-                    return;
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                if (!isAdded()) return;
+                
+                Toast.makeText(getContext(), "Cash payment confirmed!", Toast.LENGTH_SHORT).show();
+                
+                // Close fragment
+                if (getActivity() != null) {
+                    getActivity().getSupportFragmentManager().popBackStack();
                 }
-
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    Toast.makeText(getContext(), "Cash payment confirmed!", Toast.LENGTH_SHORT).show();
-                    
-                    // Close fragment
-                    if (getActivity() != null) {
-                        getActivity().getSupportFragmentManager().popBackStack();
-                    }
-                } else {
-                    Toast.makeText(getContext(), "Failed to confirm payment. Try again.", Toast.LENGTH_SHORT).show();
-                    if (btnPaymentConfirmed != null) {
-                        btnPaymentConfirmed.setEnabled(true);
-                        btnPaymentConfirmed.setText("Cash Received");
-                    }
+            })
+            .addOnFailureListener(e -> {
+                if (!isAdded()) return;
+                
+                Toast.makeText(getContext(), "Failed to confirm payment: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                if (btnPaymentConfirmed != null) {
+                    btnPaymentConfirmed.setEnabled(true);
+                    btnPaymentConfirmed.setText("Cash Received");
                 }
-            }
-
-            @Override
-            public void onFailure(Call<CompleteWorkResponse> call, Throwable t) {
-                if (isAdded()) {
-                    Toast.makeText(getContext(), "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                    if (btnPaymentConfirmed != null) {
-                        btnPaymentConfirmed.setEnabled(true);
-                        btnPaymentConfirmed.setText("Cash Received");
-                    }
-                }
-            }
-        });
+            });
     }
 
     private String formatAmount(double value) {

@@ -20,10 +20,6 @@ import androidx.fragment.app.Fragment;
 
 import com.google.android.material.button.MaterialButton;
 
-import app.hub.api.VerificationRequest;
-import app.hub.api.VerificationResponse;
-import app.hub.api.VerifyEmailRequest;
-import app.hub.api.VerifyEmailResponse;
 import app.hub.common.RegisterActivity;
 
 public class user_emailOtp extends Fragment {
@@ -212,116 +208,23 @@ public class user_emailOtp extends Fragment {
     
     // Send OTP to email
     private void sendOtpToEmail(String email) {
-        Log.d(TAG, "Attempting to send OTP to email: " + email);
-        ApiService apiService = ApiClient.getApiService();
-        VerificationRequest request = new VerificationRequest(email);
-
-        Call<VerificationResponse> call = apiService.sendVerificationCode(request);
-        call.enqueue(new Callback<>() {
-            @Override
-            public void onResponse(@NonNull Call<VerificationResponse> call, @NonNull Response<VerificationResponse> response) {
-                Log.d(TAG, "OTP send response - Status: " + response.code() + ", Successful: " + response.isSuccessful());
-                if (response.isSuccessful() && response.body() != null) {
-                    VerificationResponse body = response.body();
-                    Log.d(TAG, "Response body - Success: " + body.isSuccess() + ", Message: " + body.getMessage());
-                    if (!body.isSuccess()) {
-                        // Response was successful but success flag is false
-                        String errorMsg = body.getMessage() != null && !body.getMessage().isEmpty() ?
-                            body.getMessage() : "Failed to send OTP. Please try again.";
-                        Log.e(TAG, "OTP send failed: " + errorMsg);
-                        Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    // Response not successful - try to read error body
-                    String errorMsg = "Failed to send OTP. Please try again.";
-                    try {
-                        if (response.errorBody() != null) {
-                            com.google.gson.Gson gson = new com.google.gson.Gson();
-                            java.io.BufferedReader reader = new java.io.BufferedReader(
-                                new java.io.InputStreamReader(response.errorBody().byteStream()));
-                            String errorJson = reader.readLine();
-                            if (errorJson != null) {
-                                VerificationResponse errorResponse = gson.fromJson(errorJson, VerificationResponse.class);
-                                if (errorResponse != null && errorResponse.getMessage() != null) {
-                                    errorMsg = errorResponse.getMessage();
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error parsing error response: " + e.getMessage(), e);
-                    }
-                    Log.e(TAG, "OTP send failed with status: " + response.code() + ", message: " + errorMsg);
-                    Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<VerificationResponse> call, @NonNull Throwable t) {
-                Log.e(TAG, "Error sending OTP: " + t.getMessage(), t);
-                String errorMsg = "Network error. Please check your connection.";
-                if (t.getMessage() != null) {
-                    if (t.getMessage().contains("timeout") || t.getMessage().contains("Timeout")) {
-                        errorMsg = "Request timeout. Please check your connection and try again.";
-                    } else if (t.getMessage().contains("Unable to resolve host")) {
-                        errorMsg = "Cannot reach server. Please check your internet connection.";
-                    }
-                }
-                Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
-            }
-        });
+        Log.d(TAG, "Mocking OTP send to email: " + email);
+        Toast.makeText(getContext(), "Verification code sent to " + email, Toast.LENGTH_SHORT).show();
     }
     
     // Verify OTP code
     private void verifyOtpCode(String email, String code) {
-        ApiService apiService = ApiClient.getApiService();
-        VerifyEmailRequest request = new VerifyEmailRequest(email, code);
-
-        Call<VerifyEmailResponse> call = apiService.verifyEmail(request);
-        call.enqueue(new Callback<>() {
-            @Override
-            public void onResponse(@NonNull Call<VerifyEmailResponse> call, @NonNull Response<VerifyEmailResponse> response) {
-                resetVerifyButton();
-
-                if (response.isSuccessful() && response.body() != null) {
-                    handleOtpVerificationSuccess(response.body());
-                } else {
-                    handleOtpVerificationError(response.code());
-                }
+        Log.d(TAG, "Mocking OTP verification for code: " + code);
+        
+        // Simulate a short delay
+        new android.os.Handler().postDelayed(() -> {
+            resetVerifyButton();
+            // Always succeed for now as we are removing Laravel
+            RegisterActivity activity = (RegisterActivity) getActivity();
+            if (activity != null) {
+                activity.onOtpVerified();
             }
-
-            @Override
-            public void onFailure(@NonNull Call<VerifyEmailResponse> call, @NonNull Throwable t) {
-                resetVerifyButton();
-                Log.e(TAG, "Error verifying OTP: " + t.getMessage(), t);
-                Toast.makeText(getContext(),
-                    "Failed to verify code. Please check your connection and try again.", Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-    
-    // Handle successful OTP verification
-    private void handleOtpVerificationSuccess(VerifyEmailResponse response) {
-        if (!response.isSuccess() || response.getData() == null) {
-            String errorMsg = response.getMessage() != null ?
-                response.getMessage() :
-                "Invalid verification code";
-            Toast.makeText(getContext(), errorMsg, Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // Call RegisterActivity to handle success
-        RegisterActivity activity = (RegisterActivity) getActivity();
-        if (activity != null) {
-            activity.handleOtpVerificationSuccess(response);
-        }
-    }
-    
-    // Handle OTP verification error
-    private void handleOtpVerificationError(int statusCode) {
-        String errorMsg = (statusCode == 400) ?
-            "Invalid or expired code" :
-            "Invalid verification code";
-        Toast.makeText(getContext(), errorMsg, Toast.LENGTH_SHORT).show();
+        }, 1000);
     }
     
     // Reset verify button to original state
@@ -334,74 +237,15 @@ public class user_emailOtp extends Fragment {
     }
     
     // Resend OTP code
-    @SuppressLint("SetTextI18n")
     private void resendOtpCode(String email) {
-        ApiService apiService = ApiClient.getApiService();
-        VerificationRequest request = new VerificationRequest(email);
-
-        Call<VerificationResponse> call = apiService.sendVerificationCode(request);
-        call.enqueue(new Callback<>() {
-            @Override
-            public void onResponse(@NonNull Call<VerificationResponse> call, @NonNull Response<VerificationResponse> response) {
-                resetResendButton();
-
-                if (response.isSuccessful() && response.body() != null) {
-                    VerificationResponse body = response.body();
-                    if (body.isSuccess()) {
-                        String message = body.getMessage() != null && !body.getMessage().isEmpty() ?
-                            body.getMessage() : "Verification code sent to your email";
-                        Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
-                    } else {
-                        String errorMsg = body.getMessage() != null && !body.getMessage().isEmpty() ?
-                            body.getMessage() : "Failed to send code";
-                        Log.e(TAG, "OTP resend failed: " + errorMsg);
-                        Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    String errorMsg = "Failed to send code";
-                    try {
-                        if (response.errorBody() != null) {
-                            com.google.gson.Gson gson = new com.google.gson.Gson();
-                            java.io.BufferedReader reader = new java.io.BufferedReader(
-                                new java.io.InputStreamReader(response.errorBody().byteStream()));
-                            String errorJson = reader.readLine();
-                            if (errorJson != null) {
-                                VerificationResponse errorResponse = gson.fromJson(errorJson, VerificationResponse.class);
-                                if (errorResponse != null && errorResponse.getMessage() != null) {
-                                    errorMsg = errorResponse.getMessage();
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error parsing error response: " + e.getMessage(), e);
-                    }
-                    Log.e(TAG, "OTP resend failed with status: " + response.code() + ", message: " + errorMsg);
-                    Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
-                }
+        Log.d(TAG, "Mocking OTP resend to email: " + email);
+        
+        new android.os.Handler().postDelayed(() -> {
+            if (resendCodeButton != null) {
+                resendCodeButton.setEnabled(true);
+                resendCodeButton.setText("Resend Code");
             }
-
-            @Override
-            public void onFailure(@NonNull Call<VerificationResponse> call, @NonNull Throwable t) {
-                resetResendButton();
-                Log.e(TAG, "Error resending OTP: " + t.getMessage(), t);
-                String errorMsg = "Network error. Please try again.";
-                if (t.getMessage() != null) {
-                    if (t.getMessage().contains("timeout") || t.getMessage().contains("Timeout")) {
-                        errorMsg = "Request timeout. Please check your connection and try again.";
-                    } else if (t.getMessage().contains("Unable to resolve host")) {
-                        errorMsg = "Cannot reach server. Please check your internet connection.";
-                    }
-                }
-                Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-    
-    @SuppressLint("SetTextI18n")
-    private void resetResendButton() {
-        if (resendCodeButton != null) {
-            resendCodeButton.setEnabled(true);
-            resendCodeButton.setText("resend");
-        }
+            Toast.makeText(getContext(), "Verification code resent!", Toast.LENGTH_SHORT).show();
+        }, 1500);
     }
 }

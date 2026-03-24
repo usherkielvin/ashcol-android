@@ -17,9 +17,12 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
 import app.hub.R;
-import app.hub.api.ChangePasswordRequest;
-import app.hub.api.ChangePasswordResponse;
 import app.hub.util.TokenManager;
+
+import com.google.firebase.auth.AuthCredential;
+import com.google.firebase.auth.EmailAuthProvider;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 
 public class ChangePasswordFragment extends Fragment {
@@ -116,42 +119,33 @@ public class ChangePasswordFragment extends Fragment {
     }
 
     private void changePassword(String currentPassword, String newPassword) {
-        String token = tokenManager.getToken();
-        if (token == null) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null || user.getEmail() == null) {
             Toast.makeText(requireContext(), "Authentication error. Please login again.", Toast.LENGTH_SHORT).show();
             return;
         }
 
         setLoadingState(true);
 
-        ChangePasswordRequest request = new ChangePasswordRequest(currentPassword, newPassword, newPassword);
-        ApiService apiService = ApiClient.getApiService();
-        Call<ChangePasswordResponse> call = apiService.changePassword(token, request);
-
-        call.enqueue(new Callback<ChangePasswordResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<ChangePasswordResponse> call, @NonNull Response<ChangePasswordResponse> response) {
+        // Re-authenticate user before changing password
+        AuthCredential credential = EmailAuthProvider.getCredential(user.getEmail(), currentPassword);
+        user.reauthenticate(credential)
+            .addOnSuccessListener(aVoid -> {
+                // Change password
+                user.updatePassword(newPassword)
+                    .addOnSuccessListener(aVoid1 -> {
+                        setLoadingState(false);
+                        handlePasswordChangeSuccess("Password changed successfully");
+                    })
+                    .addOnFailureListener(e -> {
+                        setLoadingState(false);
+                        handlePasswordChangeFailure(e.getMessage());
+                    });
+            })
+            .addOnFailureListener(e -> {
                 setLoadingState(false);
-
-                if (response.isSuccessful() && response.body() != null) {
-                    ChangePasswordResponse changePasswordResponse = response.body();
-                    if (changePasswordResponse.isSuccess()) {
-                        handlePasswordChangeSuccess(changePasswordResponse.getMessage());
-                    } else {
-                        handlePasswordChangeFailure(changePasswordResponse.getMessage());
-                    }
-                } else {
-                    handlePasswordChangeError(response);
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ChangePasswordResponse> call, @NonNull Throwable t) {
-                setLoadingState(false);
-                Log.e("ChangePasswordFragment", "Change password failed: " + t.getMessage());
-                Toast.makeText(requireContext(), "Network error. Please check your connection.", Toast.LENGTH_SHORT).show();
-            }
-        });
+                Toast.makeText(requireContext(), "Re-authentication failed. Please check your current password.", Toast.LENGTH_LONG).show();
+            });
     }
 
     private void setLoadingState(boolean isLoading) {
@@ -177,42 +171,7 @@ public class ChangePasswordFragment extends Fragment {
         confirmPasswordInput.setText("");
     }
 
-    private void handlePasswordChangeError(Response<ChangePasswordResponse> response) {
-        if (response.code() == 400 || response.code() == 422) {
-            ChangePasswordResponse errorResponse = response.body();
-            if (errorResponse != null && errorResponse.getErrors() != null) {
-                displayValidationErrors(errorResponse.getErrors(), errorResponse.getMessage());
-            } else {
-                Toast.makeText(requireContext(), "Invalid input. Please check your passwords.", Toast.LENGTH_LONG).show();
-            }
-        } else {
-            Toast.makeText(requireContext(), "Failed to change password. Please try again.", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void displayValidationErrors(ChangePasswordResponse.Errors errors, String message) {
-        StringBuilder errorMsg = new StringBuilder();
-
-        if (errors.getCurrent_password() != null && errors.getCurrent_password().length > 0) {
-            currentPasswordLayout.setError(errors.getCurrent_password()[0]);
-            errorMsg.append(errors.getCurrent_password()[0]).append("\n");
-        }
-
-        if (errors.getNew_password() != null && errors.getNew_password().length > 0) {
-            newPasswordLayout.setError(errors.getNew_password()[0]);
-            errorMsg.append(errors.getNew_password()[0]).append("\n");
-        }
-
-        if (errors.getNew_password_confirmation() != null && errors.getNew_password_confirmation().length > 0) {
-            confirmPasswordLayout.setError(errors.getNew_password_confirmation()[0]);
-            errorMsg.append(errors.getNew_password_confirmation()[0]);
-        }
-
-        if (errorMsg.length() > 0) {
-            Toast.makeText(requireContext(), errorMsg.toString().trim(), Toast.LENGTH_LONG).show();
-        } else {
-            String displayMessage = message != null && !message.isEmpty() ? message : "Invalid input";
-            Toast.makeText(requireContext(), displayMessage, Toast.LENGTH_LONG).show();
-        }
+    private void handlePasswordChangeError(Object response) {
+        // Not used anymore in Firebase flow
     }
 }

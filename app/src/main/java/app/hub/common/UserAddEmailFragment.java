@@ -17,9 +17,7 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import app.hub.R;
-import app.hub.api.LoginRequest;
-import app.hub.api.LoginResponse;
-
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class UserAddEmailFragment extends Fragment {
 
@@ -127,20 +125,8 @@ public class UserAddEmailFragment extends Fragment {
     private void saveEmailAndContinue() {
         String email = getText(emailInput);
         
-        // Show loading state
-        if (continueButton != null) {
-            continueButton.setEnabled(false);
-            continueButton.setText("Please wait...");
-        }
-
-        // Show loading state
-        if (continueButton != null) {
-            continueButton.setEnabled(false);
-            continueButton.setText("Checking...");
-        }
-
         // Check if email already exists in database
-        checkEmailExists(email);
+        checkEmailAvailability(email);
     }
     
     private void showEmailExistsError(String message) {
@@ -151,45 +137,36 @@ public class UserAddEmailFragment extends Fragment {
         // The user can either type a different email or close the registration and go to login
     }
     
-    private void checkEmailExists(String email) {
-        ApiService apiService = ApiClient.getApiService();
-        
-        // Use a dummy login request to check if email exists
-        // We'll use an invalid password to trigger the check
-        app.hub.api.LoginRequest request = new app.hub.api.LoginRequest(email, "dummy_check_password_" + System.currentTimeMillis());
-        
-        Call<app.hub.api.LoginResponse> call = apiService.login(request);
-        call.enqueue(new Callback<app.hub.api.LoginResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<app.hub.api.LoginResponse> call, @NonNull Response<app.hub.api.LoginResponse> response) {
-                if (getActivity() == null) return;
-                
-                getActivity().runOnUiThread(() -> {
-                    // If we get 401 (invalid credentials), it means the email exists
-                    if (response.code() == 401) {
-                        showEmailExistsError("Email already registered. Please use a different email or sign in instead.");
-                        resetContinueButton();
-                    } else if (response.code() == 404) {
-                        // Email doesn't exist - proceed with registration
-                        proceedWithEmailRegistration(email);
-                    } else {
-                        // Other error codes - proceed with registration (backend will catch duplicates)
-                        proceedWithEmailRegistration(email);
-                    }
-                });
-            }
+    private void checkEmailAvailability(String email) {
+        if (continueButton != null) {
+            continueButton.setEnabled(false);
+            continueButton.setText("Checking...");
+        }
 
-            @Override
-            public void onFailure(@NonNull Call<app.hub.api.LoginResponse> call, @NonNull Throwable t) {
+        Log.d(TAG, "Checking email availability in Firestore: " + email);
+
+        FirebaseFirestore.getInstance().collection("users")
+            .whereEqualTo("email", email)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 if (getActivity() == null) return;
-                
-                getActivity().runOnUiThread(() -> {
-                    Log.e(TAG, "Error checking email: " + t.getMessage());
-                    // On network error, proceed anyway (backend will catch duplicates)
+
+                if (!queryDocumentSnapshots.isEmpty()) {
+                    // User already exists
+                    emailInput.setError("Email is already registered");
+                    showEmailExistsError("This email is already registered. Please log in instead.");
+                    resetContinueButton();
+                } else {
+                    // Email available
                     proceedWithEmailRegistration(email);
-                });
-            }
-        });
+                }
+            })
+            .addOnFailureListener(e -> {
+                if (getActivity() == null) return;
+                resetContinueButton();
+                Log.e(TAG, "Error checking email availability: " + e.getMessage());
+                showError("Error checking email. Please try again.");
+            });
     }
     
     private void proceedWithEmailRegistration(String email) {

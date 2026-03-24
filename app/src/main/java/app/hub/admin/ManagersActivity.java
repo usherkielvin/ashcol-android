@@ -17,6 +17,9 @@ import app.hub.R;
 import app.hub.api.EmployeeResponse;
 import app.hub.util.TokenManager;
 
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 public class ManagersActivity extends AppCompatActivity {
 
     private static final int ADD_MANAGER_REQUEST_CODE = 1001;
@@ -70,65 +73,37 @@ public class ManagersActivity extends AppCompatActivity {
     }
 
     private void loadManagers() {
-        android.util.Log.d("ManagersActivity", "Loading managers from API...");
+        android.util.Log.d("ManagersActivity", "Loading managers from Firestore...");
         
-        TokenManager tokenManager = new TokenManager(this);
-        String token = tokenManager.getToken();
-        
-        if (token == null) {
-            android.util.Log.e("ManagersActivity", "No token available");
-            return;
-        }
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<EmployeeResponse> call = apiService.getEmployees("Bearer " + token);
-        
-        call.enqueue(new Callback<EmployeeResponse>() {
-            @Override
-            public void onResponse(Call<EmployeeResponse> call, Response<EmployeeResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    EmployeeResponse employeeResponse = response.body();
+        FirebaseFirestore.getInstance().collection("users")
+            .whereEqualTo("role", "manager")
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                managerList.clear();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    String firstName = doc.getString("first_name");
+                    String lastName = doc.getString("last_name");
+                    String name = firstName != null ? firstName + " " + lastName : doc.getString("name");
+                    String email = doc.getString("email");
+                    String phone = doc.getString("phone");
+                    String branch = doc.getString("branch");
+                    String profilePhoto = doc.getString("profile_photo");
                     
-                    if (employeeResponse.isSuccess()) {
-                        processManagerData(employeeResponse.getEmployees());
-                    } else {
-                        android.util.Log.e("ManagersActivity", "API returned success=false: " + employeeResponse.getMessage());
-                    }
-                } else {
-                    android.util.Log.e("ManagersActivity", "API response not successful");
+                    managerList.add(new Manager(name, email, phone, branch, profilePhoto));
                 }
-            }
-            
-            @Override
-            public void onFailure(Call<EmployeeResponse> call, Throwable t) {
-                android.util.Log.e("ManagersActivity", "API call failed: " + t.getMessage(), t);
-            }
-        });
+                
+                runOnUiThread(() -> {
+                    managersAdapter.notifyDataSetChanged();
+                    android.util.Log.d("ManagersActivity", "Loaded " + managerList.size() + " managers from Firestore");
+                });
+            })
+            .addOnFailureListener(e -> {
+                android.util.Log.e("ManagersActivity", "Error loading managers: " + e.getMessage());
+            });
     }
 
     private void processManagerData(List<EmployeeResponse.Employee> employees) {
-        managerList.clear();
-        
-        // Filter employees to get only managers
-        for (EmployeeResponse.Employee employee : employees) {
-            if ("manager".equalsIgnoreCase(employee.getRole())) {
-                int userId = employee.getId();
-                String fullName = employee.getFirstName() + " " + employee.getLastName();
-                String branch = employee.getBranch() != null ? employee.getBranch() : "No branch assigned";
-                String email = employee.getEmail() != null ? employee.getEmail() : "No email";
-                String status = "Active"; // Default status
-                String phone = "+63 9XX XXX XXXX"; // Placeholder phone
-                String joinDate = "N/A"; // Placeholder join date
-                
-                managerList.add(new Manager(userId, fullName, branch, email, status, phone, joinDate));
-            }
-        }
-        
-        // Update UI on main thread
-        runOnUiThread(() -> {
-            managersAdapter.notifyDataSetChanged();
-            android.util.Log.d("ManagersActivity", "Loaded " + managerList.size() + " managers");
-        });
+        // No longer used
     }
 
     private void onManagerClick(Manager manager) {
@@ -155,15 +130,16 @@ public class ManagersActivity extends AppCompatActivity {
 
     // Manager data class
     public static class Manager {
-        private int id;
+        private String id;
         private String name;
         private String branch;
         private String email;
         private String status;
         private String phone;
         private String joinDate;
+        private String profilePhoto;
 
-        public Manager(int id, String name, String branch, String email, String status, String phone, String joinDate) {
+        public Manager(String id, String name, String branch, String email, String status, String phone, String joinDate, String profilePhoto) {
             this.id = id;
             this.name = name;
             this.branch = branch;
@@ -171,14 +147,27 @@ public class ManagersActivity extends AppCompatActivity {
             this.status = status;
             this.phone = phone;
             this.joinDate = joinDate;
+            this.profilePhoto = profilePhoto;
         }
 
-        public int getId() { return id; }
+        public Manager(String name, String email, String phone, String branch, String profilePhoto) {
+            this.id = "";
+            this.name = name;
+            this.email = email;
+            this.phone = phone;
+            this.branch = branch;
+            this.profilePhoto = profilePhoto;
+            this.status = "Active";
+            this.joinDate = "";
+        }
+
+        public String getId() { return id; }
         public String getName() { return name; }
         public String getBranch() { return branch; }
         public String getEmail() { return email; }
         public String getStatus() { return status; }
         public String getPhone() { return phone; }
         public String getJoinDate() { return joinDate; }
+        public String getProfilePhoto() { return profilePhoto; }
     }
 }

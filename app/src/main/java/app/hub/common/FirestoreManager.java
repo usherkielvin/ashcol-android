@@ -28,7 +28,7 @@ public class FirestoreManager {
     private ListenerRegistration completedPaymentsListener;
 
     public interface UserProfileListener {
-        void onProfileUpdated(UserResponse.Data profile);
+        void onProfileLoaded(DocumentSnapshot doc);
 
         void onError(Exception e);
     }
@@ -38,48 +38,37 @@ public class FirestoreManager {
         tokenManager = new TokenManager(context);
     }
 
+    public void getUserProfile(String uid, UserProfileListener listener) {
+        db.collection("users").document(uid).get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    listener.onProfileLoaded(documentSnapshot);
+                } else {
+                    listener.onError(new Exception("User profile not found"));
+                }
+            })
+            .addOnFailureListener(e -> {
+                listener.onError(e);
+            });
+    }
+
     public void listenToUserProfile(UserProfileListener listener) {
-        // We use the numeric ID from the backend as the document ID in Firestore
-        // Need to make sure we have the ID available. For now, we might need to rely on
-        // what we have.
-        // However, ProfileController uses user->id as the document ID.
-        // We might not have the numeric ID readily available in TokenManager if we
-        // haven't stored it explicitly.
-        // But we do have 'user_id' probably if we checked login response.
-
-        // Strategy: Use email to query if ID is not available, OR rely on the fact that
-        // we should store ID.
-        // Let's assume for a moment we might need to query by email first or store the
-        // ID.
-        // Checking TokenManager, we have getUserId() which returns email.
-        // So we might need to change how we identify the document.
-
-        // Wait, the backend uses user->id (int).
-        // TokenManager.getUserId() returns email currently.
-        // We need to support fetching by email OR store the integer ID.
-
-        // For now, let's try to query by email since that's unique and safe.
-        String email = tokenManager.getEmail();
-        if (email == null) {
-            listener.onError(new Exception("No user email found"));
+        String uid = tokenManager.getUid();
+        if (uid == null) {
+            listener.onError(new Exception("No user UID found"));
             return;
         }
 
-        userProfileListener = db.collection("users")
-                .whereEqualTo("email", email)
-                .addSnapshotListener(MetadataChanges.INCLUDE, (snapshots, error) -> {
+        userProfileListener = db.collection("users").document(uid)
+                .addSnapshotListener(MetadataChanges.INCLUDE, (snapshot, error) -> {
                     if (error != null) {
                         Log.e(TAG, "Listen failed: " + error);
                         listener.onError(error);
                         return;
                     }
 
-                    if (snapshots != null && !snapshots.isEmpty()) {
-                        DocumentSnapshot document = snapshots.getDocuments().get(0);
-                        if (document.exists()) {
-                            UserResponse.Data profile = document.toObject(UserResponse.Data.class);
-                            listener.onProfileUpdated(profile);
-                        }
+                    if (snapshot != null && snapshot.exists()) {
+                        listener.onProfileLoaded(snapshot);
                     }
                 });
     }

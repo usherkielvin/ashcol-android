@@ -6,6 +6,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
@@ -23,12 +24,16 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.DocumentSnapshot;
+
+import java.util.HashMap;
+import java.util.Map;
+
 import app.hub.R;
 import app.hub.api.TicketDetailResponse;
-import app.hub.api.UpdateTicketStatusRequest;
-import app.hub.api.UpdateTicketStatusResponse;
-import app.hub.api.CompleteWorkRequest;
-import app.hub.api.CompleteWorkResponse;
 import app.hub.util.TokenManager;
 
 public class EmployeeTicketDetailActivity extends AppCompatActivity
@@ -150,43 +155,28 @@ public class EmployeeTicketDetailActivity extends AppCompatActivity
     }
 
     private void loadTicketDetails() {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(this, "You are not logged in.", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
+        if (ticketId == null) return;
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<TicketDetailResponse> call = apiService.getTicketDetail("Bearer " + token, ticketId);
+        android.util.Log.d("EmployeeTicketDetail", "Loading ticket details from Firestore: " + ticketId);
 
-        call.enqueue(new Callback<TicketDetailResponse>() {
-            @Override
-            public void onResponse(Call<TicketDetailResponse> call, Response<TicketDetailResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    TicketDetailResponse ticketResponse = response.body();
-                    if (ticketResponse.isSuccess()) {
-                        currentTicket = ticketResponse.getTicket();
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    currentTicket = documentSnapshot.toObject(TicketDetailResponse.TicketDetail.class);
+                    if (currentTicket != null) {
                         displayTicketDetails(currentTicket);
-                    } else {
-                        Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to load ticket details",
-                                Toast.LENGTH_SHORT).show();
-                        finish();
                     }
                 } else {
-                    Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to load ticket details",
-                            Toast.LENGTH_SHORT).show();
+                    Toast.makeText(EmployeeTicketDetailActivity.this, "Ticket not found", Toast.LENGTH_SHORT).show();
                     finish();
                 }
-            }
-
-            @Override
-            public void onFailure(Call<TicketDetailResponse> call, Throwable t) {
-                Toast.makeText(EmployeeTicketDetailActivity.this, "Network error: " + t.getMessage(),
-                        Toast.LENGTH_SHORT).show();
+            })
+            .addOnFailureListener(e -> {
+                Log.e("EmployeeTicketDetail", "Error loading ticket details: " + e.getMessage());
+                Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to load ticket details", Toast.LENGTH_SHORT).show();
                 finish();
-            }
-        });
+            });
     }
 
     private void displayTicketDetails(TicketDetailResponse.TicketDetail ticket) {
@@ -283,29 +273,30 @@ public class EmployeeTicketDetailActivity extends AppCompatActivity
     }
 
     private void loadPaymentDetails() {
-        String token = tokenManager.getToken();
-        if (token == null || ticketId == null) {
-            return;
-        }
+        if (ticketId == null) return;
 
-        ApiService apiService = ApiClient.getApiService();
-        Call<app.hub.api.PaymentDetailResponse> call = apiService.getPaymentByTicketId("Bearer " + token, ticketId);
-        call.enqueue(new Callback<app.hub.api.PaymentDetailResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.PaymentDetailResponse> call,
-                    Response<app.hub.api.PaymentDetailResponse> response) {
-                if (!isFinishing() && response.isSuccessful() && response.body() != null
-                        && response.body().isSuccess() && response.body().getPayment() != null) {
-                    app.hub.api.PaymentDetailResponse.PaymentDetail payment = response.body().getPayment();
-                    bindPayment(payment);
+        android.util.Log.d("EmployeeTicketDetail", "Loading payment details from Firestore: " + ticketId);
+
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (isFinishing() || isDestroyed()) return;
+                
+                if (documentSnapshot.exists()) {
+                    Double amountVal = documentSnapshot.getDouble("total_amount");
+                    String statusVal = documentSnapshot.getString("payment_status");
+                    String methodVal = documentSnapshot.getString("payment_method");
+                    
+                    if (amountVal != null && amountVal > 0) {
+                        // Use a dummy object for bindPayment or update bindPayment to take raw values
+                        app.hub.api.PaymentDetailResponse.PaymentDetail payment = new app.hub.api.PaymentDetailResponse.PaymentDetail();
+                        payment.setAmount(amountVal);
+                        payment.setStatus(statusVal);
+                        payment.setPaymentMethod(methodVal);
+                        bindPayment(payment);
+                    }
                 }
-            }
-
-            @Override
-            public void onFailure(Call<app.hub.api.PaymentDetailResponse> call, Throwable t) {
-                // Keep existing payment UI state if request fails.
-            }
-        });
+            });
     }
 
     private void bindPayment(app.hub.api.PaymentDetailResponse.PaymentDetail payment) {
@@ -412,43 +403,23 @@ public class EmployeeTicketDetailActivity extends AppCompatActivity
     }
 
     private void updateTicketStatus(String status) {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(this, "You are not logged in.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (ticketId == null) return;
 
-        UpdateTicketStatusRequest request = new UpdateTicketStatusRequest(status);
-        ApiService apiService = ApiClient.getApiService();
-        Call<UpdateTicketStatusResponse> call = apiService.updateTicketStatus("Bearer " + token, ticketId, request);
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("status", status);
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
 
-        call.enqueue(new Callback<UpdateTicketStatusResponse>() {
-            @Override
-            public void onResponse(Call<UpdateTicketStatusResponse> call,
-                    Response<UpdateTicketStatusResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    UpdateTicketStatusResponse statusResponse = response.body();
-                    if (statusResponse.isSuccess()) {
-                        String message = status.equals("ongoing") ? "Work started successfully"
-                                : "Work completed successfully";
-                        Toast.makeText(EmployeeTicketDetailActivity.this, message, Toast.LENGTH_SHORT).show();
-                        loadTicketDetails(); // Refresh ticket details
-                    } else {
-                        Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to update ticket status",
-                                Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to update ticket status",
-                            Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<UpdateTicketStatusResponse> call, Throwable t) {
-                Toast.makeText(EmployeeTicketDetailActivity.this, "Network error: " + t.getMessage(),
-                        Toast.LENGTH_SHORT).show();
-            }
-        });
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                String message = status.equals("ongoing") ? "Work started successfully"
+                        : "Work completed successfully";
+                Toast.makeText(EmployeeTicketDetailActivity.this, message, Toast.LENGTH_SHORT).show();
+                loadTicketDetails();
+            })
+            .addOnFailureListener(e -> {
+                Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to update status: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            });
     }
 
     private String formatDate(String dateString) {
@@ -702,164 +673,61 @@ public class EmployeeTicketDetailActivity extends AppCompatActivity
     }
 
     private void requestPayment(double amount, String notes) {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(this, "You are not logged in.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (ticketId == null) return;
 
-        int technicianId = tokenManager.getUserIdInt();
-        if (technicianId <= 0) {
-            Toast.makeText(this, "Unable to identify technician.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("total_amount", amount);
+        updates.put("notes", notes);
+        updates.put("status", "Pending Payment");
+        updates.put("payment_status", "pending");
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
 
-        ApiService apiService = ApiClient.getApiService();
-        app.hub.api.PaymentRequestBody request = new app.hub.api.PaymentRequestBody(ticketId, technicianId);
-        Call<app.hub.api.PaymentRequestResponse> call = apiService.requestPayment("Bearer " + token, request);
-
-        call.enqueue(new Callback<app.hub.api.PaymentRequestResponse>() {
-            @Override
-            public void onResponse(Call<app.hub.api.PaymentRequestResponse> call,
-                                   Response<app.hub.api.PaymentRequestResponse> response) {
-                if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
-                    Toast.makeText(EmployeeTicketDetailActivity.this,
-                            "Payment request sent to customer.", Toast.LENGTH_LONG).show();
-                    if (currentTicket != null) {
-                        currentTicket.setStatus("Pending Payment");
-                        currentTicket.setStatusDetail("Pending Payment");
-                    }
-                    if (finishAfterPayment) {
-                        Intent result = new Intent();
-                        result.putExtra("ticket_id", ticketId);
-                        setResult(RESULT_OK, result);
-                        finish();
-                    } else {
-                        loadTicketDetails();
-                    }
-                    return;
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
+                Toast.makeText(EmployeeTicketDetailActivity.this, "Payment request sent to customer.", Toast.LENGTH_LONG).show();
+                if (finishAfterPayment) {
+                    Intent result = new Intent();
+                    result.putExtra("ticket_id", ticketId);
+                    setResult(RESULT_OK, result);
+                    finish();
+                } else {
+                    loadTicketDetails();
                 }
-
-                String message = "Failed to request payment";
-                if (response.body() != null && response.body().getMessage() != null) {
-                    message = response.body().getMessage();
-                }
-                Toast.makeText(EmployeeTicketDetailActivity.this, message, Toast.LENGTH_LONG).show();
-            }
-
-            @Override
-            public void onFailure(Call<app.hub.api.PaymentRequestResponse> call, Throwable t) {
-                Toast.makeText(EmployeeTicketDetailActivity.this,
-                        "Network error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to request payment: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            });
     }
 
     private void completeWorkWithPayment(String paymentMethod, double amount, String notes) {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            Toast.makeText(this, "You are not logged in.", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (ticketId == null) return;
 
         btnCompleteWork.setEnabled(false);
         btnCompleteWork.setText("Processing...");
 
-        CompleteWorkRequest request = new CompleteWorkRequest(paymentMethod, amount, notes);
-        ApiService apiService = ApiClient.getApiService();
-        Call<CompleteWorkResponse> call = apiService.completeWorkWithPayment("Bearer " + token, ticketId, request);
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("payment_method", paymentMethod);
+        updates.put("total_amount", amount);
+        updates.put("notes", notes);
+        updates.put("payment_status", "paid");
+        updates.put("status", "completed");
+        updates.put("completed_at", com.google.firebase.Timestamp.now());
+        updates.put("updated_at", com.google.firebase.Timestamp.now());
 
-        call.enqueue(new Callback<CompleteWorkResponse>() {
-            @Override
-            public void onResponse(Call<CompleteWorkResponse> call, Response<CompleteWorkResponse> response) {
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(updates)
+            .addOnSuccessListener(aVoid -> {
                 btnCompleteWork.setEnabled(true);
                 btnCompleteWork.setText("Complete Work");
-
-                if (response.isSuccessful() && response.body() != null) {
-                    CompleteWorkResponse workResponse = response.body();
-                    if (workResponse.isSuccess()) {
-                        String message = "Work completed successfully!";
-                        if ("cash".equals(paymentMethod)) {
-                            message += "\nPayment collected: ₱" + String.format("%.2f", amount);
-                        }
-                        Toast.makeText(EmployeeTicketDetailActivity.this, message, Toast.LENGTH_LONG).show();
-                        Runnable finishAction = () -> {
-                            if (finishAfterPayment) {
-                                Intent result = new Intent();
-                                result.putExtra("ticket_id", ticketId);
-                                setResult(RESULT_OK, result);
-                                finish();
-                            } else {
-                                loadTicketDetails();
-                            }
-                        };
-
-                        if ("cash".equals(paymentMethod)) {
-                            int paymentId = workResponse.getPayment() != null
-                                    ? workResponse.getPayment().getId()
-                                    : 0;
-                            if (paymentId > 0) {
-                                submitPaymentToManager(paymentId, finishAction);
-                            } else {
-                                finishAction.run();
-                            }
-                        } else {
-                            finishAction.run();
-                        }
-                    } else {
-                        Toast.makeText(EmployeeTicketDetailActivity.this, "Failed: " + workResponse.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to complete work", Toast.LENGTH_LONG)
-                            .show();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<CompleteWorkResponse> call, Throwable t) {
+                Toast.makeText(EmployeeTicketDetailActivity.this, "Work completed successfully!", Toast.LENGTH_SHORT).show();
+                loadTicketDetails();
+            })
+            .addOnFailureListener(e -> {
                 btnCompleteWork.setEnabled(true);
                 btnCompleteWork.setText("Complete Work");
-                Toast.makeText(EmployeeTicketDetailActivity.this, "Network error: " + t.getMessage(), Toast.LENGTH_LONG)
-                        .show();
-            }
-        });
-    }
-
-    private void submitPaymentToManager(int paymentId, Runnable onComplete) {
-        String token = tokenManager.getToken();
-        if (token == null) {
-            if (onComplete != null) {
-                onComplete.run();
-            }
-            return;
-        }
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<CompleteWorkResponse> call = apiService.submitPaymentToManager("Bearer " + token, paymentId);
-        call.enqueue(new Callback<CompleteWorkResponse>() {
-            @Override
-            public void onResponse(Call<CompleteWorkResponse> call, Response<CompleteWorkResponse> response) {
-                if (!response.isSuccessful()) {
-                    Toast.makeText(EmployeeTicketDetailActivity.this,
-                            "Payment submitted, but manager sync failed.",
-                            Toast.LENGTH_SHORT).show();
-                }
-                if (onComplete != null) {
-                    onComplete.run();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<CompleteWorkResponse> call, Throwable t) {
-                Toast.makeText(EmployeeTicketDetailActivity.this,
-                        "Payment submitted, but manager sync failed.",
-                        Toast.LENGTH_SHORT).show();
-                if (onComplete != null) {
-                    onComplete.run();
-                }
-            }
-        });
+                Toast.makeText(EmployeeTicketDetailActivity.this, "Failed to complete work: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            });
     }
 
     private void updateMapLocation() {

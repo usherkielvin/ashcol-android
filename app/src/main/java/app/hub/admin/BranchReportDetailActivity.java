@@ -18,10 +18,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import app.hub.R;
-import app.hub.api.BranchTicketsResponse;
 import app.hub.manager.ManagerCompleteTicketsAdapter;
 import app.hub.manager.ManagerTicketDetailActivity;
 import app.hub.util.TokenManager;
+
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 public class BranchReportDetailActivity extends AppCompatActivity {
 
@@ -104,84 +107,32 @@ public class BranchReportDetailActivity extends AppCompatActivity {
         showLoading(true);
         tvEmptyState.setVisibility(View.GONE);
 
-        String token = tokenManager.getToken();
-        if (token == null) {
-            showError("Authentication required");
-            return;
-        }
-
-        // Load both completed and cancelled tickets
-        ticketList.clear();
-        loadTicketsByStatus(token, "completed", () -> {
-            loadTicketsByStatus(token, "cancelled", () -> {
+        FirebaseFirestore.getInstance().collection("tickets")
+            .whereEqualTo("branch_name", branchName)
+            .whereEqualTo("status", "completed")
+            .orderBy("completed_at", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 showLoading(false);
-                if (ticketList.isEmpty()) {
-                    tvEmptyState.setVisibility(View.VISIBLE);
-                    rvTickets.setVisibility(View.GONE);
-                } else {
-                    adapter.notifyDataSetChanged();
-                    tvEmptyState.setVisibility(View.GONE);
-                    rvTickets.setVisibility(View.VISIBLE);
-                }
-            });
-        });
-    }
-
-    private void loadTicketsByStatus(String token, String status, Runnable onComplete) {
-        ApiService apiService = ApiClient.getApiService();
-        Call<BranchTicketsResponse> call = apiService.getBranchTickets(
-                "Bearer " + token, 
-                branchId, 
-                status
-        );
-
-        call.enqueue(new Callback<BranchTicketsResponse>() {
-            @Override
-            public void onResponse(Call<BranchTicketsResponse> call, Response<BranchTicketsResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    BranchTicketsResponse ticketsResponse = response.body();
-                    
-                    if (ticketsResponse.isSuccess()) {
-                        List<BranchTicketsResponse.Ticket> tickets = ticketsResponse.getTickets();
-                        
-                        if (tickets != null && !tickets.isEmpty()) {
-                            for (BranchTicketsResponse.Ticket ticket : tickets) {
-                                ticketList.add(convertToTicketItem(ticket));
-                            }
-                        }
+                ticketList.clear();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    app.hub.api.TicketListResponse.TicketItem ticket = doc.toObject(app.hub.api.TicketListResponse.TicketItem.class);
+                    if (ticket != null) {
+                        ticket.setTicketId(doc.getId());
+                        ticketList.add(ticket);
                     }
                 }
                 
-                if (onComplete != null) {
-                    onComplete.run();
+                if (ticketList.isEmpty()) {
+                    tvEmptyState.setVisibility(View.VISIBLE);
+                } else {
+                    adapter.notifyDataSetChanged();
                 }
-            }
-
-            @Override
-            public void onFailure(Call<BranchTicketsResponse> call, Throwable t) {
-                Log.e("BranchReportDetail", "API call failed for status " + status + ": " + t.getMessage(), t);
-                if (onComplete != null) {
-                    onComplete.run();
-                }
-            }
-        });
-    }
-
-    private app.hub.api.TicketListResponse.TicketItem convertToTicketItem(BranchTicketsResponse.Ticket ticket) {
-        app.hub.api.TicketListResponse.TicketItem item = new app.hub.api.TicketListResponse.TicketItem();
-        item.setId(ticket.getId());
-        item.setTicketId(ticket.getTicketId());
-        item.setTitle(ticket.getTitle());
-        item.setDescription(ticket.getDescription());
-        item.setServiceType(ticket.getServiceType());
-        item.setStatus(ticket.getStatus());
-        item.setStatusColor(ticket.getStatusColor());
-        item.setCustomerName(ticket.getCustomerName());
-        item.setAssignedStaff(ticket.getAssignedStaff());
-        item.setCreatedAt(ticket.getCreatedAt());
-        item.setUpdatedAt(ticket.getUpdatedAt());
-        // Note: BranchTicketsResponse doesn't include scheduled date/time
-        return item;
+            })
+            .addOnFailureListener(e -> {
+                showLoading(false);
+                showError("Error loading tickets: " + e.getMessage());
+            });
     }
 
     private void showLoading(boolean show) {

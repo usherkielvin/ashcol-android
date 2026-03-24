@@ -23,7 +23,7 @@ import app.hub.api.EmployeeResponse;
 import app.hub.api.TicketListResponse;
 import app.hub.manager.ManagerDataManager.TicketDataChangeListener;
 
-public class ManagerRecordsFragment extends Fragment implements TicketDataChangeListener {
+public class ManagerRecordsFragment extends Fragment implements ManagerDataManager.TicketDataChangeListener {
 
     private RecyclerView rvCompleteTickets;
     private TextView tvCompleteEmpty;
@@ -104,31 +104,31 @@ public class ManagerRecordsFragment extends Fragment implements TicketDataChange
     }
 
     private void refreshCompleteTickets() {
-        ManagerDataManager.refreshTickets(getContext(), new ManagerDataManager.DataLoadCallback() {
+        ManagerDataManager.loadAllData(getContext(), new ManagerDataManager.DataLoadCallback() {
             @Override
-            public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {
-            }
+            public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {}
 
             @Override
             public void onTicketsLoaded(List<TicketListResponse.TicketItem> tickets) {
-                loadCompleteTickets();
-                stopSwipeRefresh();
-                Toast.makeText(getContext(), "Records refreshed", Toast.LENGTH_SHORT).show();
+                if(getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        loadCompleteTickets();
+                        stopSwipeRefresh();
+                        Toast.makeText(getContext(), "Records refreshed", Toast.LENGTH_SHORT).show();
+                    });
+                }
             }
 
             @Override
-            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats,
-                    List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {
-            }
+            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats, List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {}
 
             @Override
-            public void onLoadComplete() {
-            }
+            public void onLoadComplete() {}
 
             @Override
             public void onLoadError(String error) {
                 stopSwipeRefresh();
-                Toast.makeText(getContext(), "Error: " + error, Toast.LENGTH_SHORT).show();
+                if(getContext() != null) Toast.makeText(getContext(), "Error: " + error, Toast.LENGTH_SHORT).show();
             }
         });
     }

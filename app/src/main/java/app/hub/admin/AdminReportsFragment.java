@@ -24,6 +24,9 @@ import app.hub.R;
 import app.hub.api.BranchReportsResponse;
 import app.hub.util.TokenManager;
 
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+
 public class AdminReportsFragment extends Fragment {
 
     private RecyclerView rvBranches;
@@ -78,51 +81,29 @@ public class AdminReportsFragment extends Fragment {
         showLoading(true);
         tvEmptyState.setVisibility(View.GONE);
 
-        String token = tokenManager.getToken();
-        if (token == null) {
-            showError("Authentication required");
-            return;
-        }
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<BranchReportsResponse> call = apiService.getBranchReports("Bearer " + token);
-
-        call.enqueue(new Callback<BranchReportsResponse>() {
-            @Override
-            public void onResponse(Call<BranchReportsResponse> call, Response<BranchReportsResponse> response) {
+        FirebaseFirestore.getInstance().collection("branches").get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
                 showLoading(false);
-
-                if (response.isSuccessful() && response.body() != null) {
-                    BranchReportsResponse branchResponse = response.body();
-                    
-                    if (branchResponse.isSuccess()) {
-                        List<BranchReportsResponse.BranchReport> branches = branchResponse.getBranches();
-                        
-                        if (branches != null && !branches.isEmpty()) {
-                            branchList.clear();
-                            branchList.addAll(branches);
-                            adapter.updateData(branchList);
-                            tvEmptyState.setVisibility(View.GONE);
-                            rvBranches.setVisibility(View.VISIBLE);
-                        } else {
-                            tvEmptyState.setVisibility(View.VISIBLE);
-                            rvBranches.setVisibility(View.GONE);
-                        }
-                    } else {
-                        showError(branchResponse.getMessage());
+                branchList.clear();
+                for (QueryDocumentSnapshot doc : queryDocumentSnapshots) {
+                    BranchReportsResponse.BranchReport report = doc.toObject(BranchReportsResponse.BranchReport.class);
+                    if (report != null) {
+                        // In Firestore, we might need to manually set some fields if they are not in the doc
+                        // or if the types are different
+                        branchList.add(report);
                     }
-                } else {
-                    showError("Failed to load branch reports");
                 }
-            }
-
-            @Override
-            public void onFailure(Call<BranchReportsResponse> call, Throwable t) {
+                
+                if (branchList.isEmpty()) {
+                    tvEmptyState.setVisibility(View.VISIBLE);
+                } else {
+                    adapter.notifyDataSetChanged();
+                }
+            })
+            .addOnFailureListener(e -> {
                 showLoading(false);
-                Log.e("AdminReportsFragment", "API call failed: " + t.getMessage(), t);
-                showError("Network error: " + t.getMessage());
-            }
-        });
+                showError("Error loading reports: " + e.getMessage());
+            });
     }
 
     private void onBranchClick(BranchReportsResponse.BranchReport branch) {

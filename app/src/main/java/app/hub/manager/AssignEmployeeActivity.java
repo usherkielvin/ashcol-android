@@ -28,9 +28,10 @@ import java.util.Locale;
 
 import app.hub.R;
 import app.hub.api.EmployeeResponse;
-import app.hub.api.SetScheduleRequest;
-import app.hub.api.SetScheduleResponse;
 import app.hub.util.TokenManager;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
 
 public class AssignEmployeeActivity extends AppCompatActivity {
 
@@ -258,12 +259,15 @@ public class AssignEmployeeActivity extends AppCompatActivity {
         actvEmployee.setAdapter(technicianAdapter);
 
         actvEmployee.setThreshold(0);
-        
+
+        // Clear text and show dropdown on click
         actvEmployee.setOnClickListener(v -> {
-            actvEmployee.setText("");
+            if (actvEmployee.getText().length() > 0) {
+                actvEmployee.setText("");
+            }
             actvEmployee.showDropDown();
         });
-        
+
         actvEmployee.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) {
                 actvEmployee.showDropDown();
@@ -344,25 +348,26 @@ public class AssignEmployeeActivity extends AppCompatActivity {
         btnAssign.setEnabled(false);
 
         // Find employee name for ticket record
-        String assignedStaffName = "Unknown Technician";
+        String staffNameTemp = "Unknown Technician";
         for (EmployeeResponse.Employee emp : employees) {
             if (emp.getId() == selectedEmployeeId) {
-                assignedStaffName = (emp.getFirstName() != null ? emp.getFirstName() : "") + " " + (emp.getLastName() != null ? emp.getLastName() : "");
-                if (assignedStaffName.trim().isEmpty() && emp.getEmail() != null) {
-                    assignedStaffName = emp.getEmail();
+                staffNameTemp = (emp.getFirstName() != null ? emp.getFirstName() : "") + " " + (emp.getLastName() != null ? emp.getLastName() : "");
+                if (staffNameTemp.trim().isEmpty() && emp.getEmail() != null) {
+                    staffNameTemp = emp.getEmail();
                 }
                 break;
             }
         }
+        final String assignedStaffName = staffNameTemp.trim();
 
         java.util.Map<String, Object> updates = new java.util.HashMap<>();
         updates.put("scheduledDate", selectedDate);
         updates.put("scheduledTime", selectedTime);
         updates.put("scheduleNotes", etNotes.getText().toString().trim());
         updates.put("assignedStaffId", String.valueOf(selectedEmployeeId));
-        updates.put("assignedStaff", assignedStaffName.trim());
+        updates.put("assignedStaff", assignedStaffName);
         updates.put("status", "ongoing");
-        updates.put("statusColor", "#2196F3");
+        updates.put("statusColor", "#2196F3"); // Blue for ongoing
         updates.put("updated_at", String.valueOf(System.currentTimeMillis()));
 
         com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
@@ -375,7 +380,7 @@ public class AssignEmployeeActivity extends AppCompatActivity {
                 ManagerDataManager.updateTicketAssignmentInCache(
                         ticketId,
                         "ongoing",
-                        (String)updates.get("assignedStaff"),
+                        assignedStaffName,
                         selectedDate,
                         selectedTime);
 

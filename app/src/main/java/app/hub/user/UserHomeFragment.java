@@ -24,6 +24,9 @@ import app.hub.R;
 import app.hub.api.TicketListResponse;
 import app.hub.api.UserResponse;
 import app.hub.util.TokenManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
 
 /**
  * A simple {@link Fragment} subclass.
@@ -198,11 +201,15 @@ public class UserHomeFragment extends Fragment {
     private void fetchUserData() {
         firestoreManager.listenToUserProfile(new app.hub.common.FirestoreManager.UserProfileListener() {
             @Override
-            public void onProfileUpdated(UserResponse.Data profile) {
-                if (profile != null) {
-                    String location = buildLocationText(profile.getCity(), profile.getRegion());
+            public void onProfileLoaded(DocumentSnapshot doc) {
+                if (doc != null && doc.exists()) {
+                    String city = doc.getString("city");
+                    String region = doc.getString("region");
+                    String branch = doc.getString("branch");
+                    
+                    String location = buildLocationText(city, region);
                     if (location == null || location.isEmpty()) {
-                        location = profile.getBranch();
+                        location = branch;
                     }
 
                     if (location != null && !location.isEmpty()) {

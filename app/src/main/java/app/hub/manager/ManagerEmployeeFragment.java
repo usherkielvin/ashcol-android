@@ -18,7 +18,6 @@ import java.util.List;
 
 import app.hub.R;
 import app.hub.api.EmployeeResponse;
-import app.hub.api.UserResponse;
 import app.hub.util.TokenManager;
 
 public class ManagerEmployeeFragment extends Fragment implements ManagerDataManager.EmployeeDataChangeListener {
@@ -86,44 +85,33 @@ public class ManagerEmployeeFragment extends Fragment implements ManagerDataMana
     }
 
     private void refreshEmployeeData() {
-        if (getContext() == null)
-            return;
+        if (getContext() == null) return;
 
-        android.util.Log.d(TAG, "Refreshing employee data");
-
-        ManagerDataManager.refreshEmployees(getContext(), new ManagerDataManager.DataLoadCallback() {
+        ManagerDataManager.loadAllData(getContext(), new ManagerDataManager.DataLoadCallback() {
             @Override
             public void onEmployeesLoaded(String branchName, List<EmployeeResponse.Employee> employees) {
-                // Data will be updated via listener callback
-                android.util.Log.d(TAG, "Employees refreshed: " + employees.size());
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(() -> {
+                        updateEmployeeUI(branchName, employees);
+                    });
+                }
             }
 
             @Override
-            public void onTicketsLoaded(List<app.hub.api.TicketListResponse.TicketItem> tickets) {
-                // Not needed for employee fragment
-            }
+            public void onTicketsLoaded(List<app.hub.api.TicketListResponse.TicketItem> tickets) {}
 
             @Override
-            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats,
-                    List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {
-                // Not needed
-            }
+            public void onDashboardStatsLoaded(app.hub.api.DashboardStatsResponse.Stats stats, List<app.hub.api.DashboardStatsResponse.RecentTicket> recentTickets) {}
 
             @Override
             public void onLoadComplete() {
-                if (swipeRefreshLayout != null) {
-                    swipeRefreshLayout.setRefreshing(false);
-                }
+                if (swipeRefreshLayout != null) swipeRefreshLayout.setRefreshing(false);
             }
 
             @Override
             public void onLoadError(String error) {
-                if (swipeRefreshLayout != null) {
-                    swipeRefreshLayout.setRefreshing(false);
-                }
-                if (getContext() != null) {
-                    Toast.makeText(getContext(), "Failed to refresh: " + error, Toast.LENGTH_SHORT).show();
-                }
+                if (swipeRefreshLayout != null) swipeRefreshLayout.setRefreshing(false);
+                if (getContext() != null) Toast.makeText(getContext(), "Failed to refresh: " + error, Toast.LENGTH_SHORT).show();
             }
         });
     }

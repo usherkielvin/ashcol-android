@@ -35,11 +35,12 @@ import java.util.Map;
 import java.util.TimeZone;
 
 import app.hub.R;
-import app.hub.api.CreateTicketRequest;
-import app.hub.api.CreateTicketResponse;
-import app.hub.api.UserResponse;
 import app.hub.map.MapSelectionActivity;
 import app.hub.util.TokenManager;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class UserCreateTicketFragment extends Fragment {
 
@@ -456,42 +457,7 @@ public class UserCreateTicketFragment extends Fragment {
     }
 
 
-    private void pushTicketToFirestore(CreateTicketResponse ticketResponse) {
-        if (ticketResponse == null) {
-            return;
-        }
 
-        CreateTicketResponse.TicketData ticketData = ticketResponse.getTicket();
-        if (ticketData == null) {
-            return;
-        }
-
-        String ticketId = ticketData.getTicketId();
-        String status = ticketResponse.getStatus();
-        if (status == null && ticketData.getStatus() != null) {
-            status = ticketData.getStatus().getName();
-        }
-
-        String branchName = null;
-        if (ticketData.getBranch() != null) {
-            branchName = ticketData.getBranch().getName();
-        }
-
-        if (ticketId == null || ticketId.trim().isEmpty() || branchName == null || branchName.trim().isEmpty()) {
-            return;
-        }
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("ticketId", ticketId);
-        payload.put("status", status != null ? status : "pending");
-        payload.put("branch", branchName);
-        payload.put("updatedAt", System.currentTimeMillis());
-
-        FirebaseFirestore.getInstance()
-                .collection("tickets")
-                .document(ticketId)
-                .set(payload);
-    }
 
     private String getRegisteredName() {
         if (tokenManager == null) {

@@ -20,6 +20,10 @@ import app.hub.api.PaymentConfirmationResponse;
 import app.hub.api.PaymentMethod;
 import app.hub.util.TokenManager;
 
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
+
 public class PaymentSelectionActivity extends AppCompatActivity {
     private static final String TAG = "PaymentSelection";
 
@@ -37,7 +41,6 @@ public class PaymentSelectionActivity extends AppCompatActivity {
     private PaymentMethod selectedPaymentMethod;
 
     private TokenManager tokenManager;
-    private ApiService apiService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -46,9 +49,8 @@ public class PaymentSelectionActivity extends AppCompatActivity {
 
         Log.d(TAG, "onCreate() - PaymentSelectionActivity started");
 
-        // Initialize TokenManager and ApiService
+        // Initialize TokenManager
         tokenManager = new TokenManager(this);
-        apiService = ApiClient.getClient().create(ApiService.class);
 
         // Get data from intent
         Intent intent = getIntent();
@@ -209,53 +211,28 @@ public class PaymentSelectionActivity extends AppCompatActivity {
             return;
         }
 
-        Log.d(TAG, "Sending payment confirmation to API...");
+        Log.d(TAG, "Updating payment confirmation in Firestore...");
 
-        // Call API
-        Call<PaymentConfirmationResponse> call = apiService.confirmPayment("Bearer " + token, requestBody);
-        call.enqueue(new Callback<PaymentConfirmationResponse>() {
-            @Override
-            public void onResponse(Call<PaymentConfirmationResponse> call, Response<PaymentConfirmationResponse> response) {
+        // Use Firestore to update payment status
+        Map<String, Object> update = new HashMap<>();
+        update.put("payment_method", selectedPaymentMethod.toString());
+        update.put("payment_status", "confirmed");
+        update.put("status", "paid");
+        update.put("payment_at", com.google.firebase.Timestamp.now());
+
+        FirebaseFirestore.getInstance().collection("tickets").document(ticketId)
+            .update(update)
+            .addOnSuccessListener(aVoid -> {
                 showLoading(false);
-                
-                Log.d(TAG, "API Response - Code: " + response.code() + ", Success: " + response.isSuccessful());
-
-                if (response.isSuccessful() && response.body() != null) {
-                    PaymentConfirmationResponse result = response.body();
-                    
-                    Log.d(TAG, "Response body - Success: " + result.isSuccess() + ", Message: " + result.getMessage());
-                    
-                    if (result.isSuccess()) {
-                        handleConfirmationResponse(result);
-                    } else {
-                        Toast.makeText(PaymentSelectionActivity.this, 
-                                result.getMessage() != null ? result.getMessage() : "Payment confirmation failed", 
-                                Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    Log.e(TAG, "Payment confirmation failed: " + response.code());
-                    try {
-                        if (response.errorBody() != null) {
-                            Log.e(TAG, "Error body: " + response.errorBody().string());
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Could not read error body", e);
-                    }
-                    Toast.makeText(PaymentSelectionActivity.this, 
-                            "Payment confirmation failed. Please try again.", 
-                            Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onFailure(Call<PaymentConfirmationResponse> call, Throwable t) {
+                Log.d(TAG, "Firestore payment update successful");
+                Toast.makeText(PaymentSelectionActivity.this, "Payment confirmed successfully!", Toast.LENGTH_LONG).show();
+                showSuccessAndFinish();
+            })
+            .addOnFailureListener(e -> {
                 showLoading(false);
-                Log.e(TAG, "Network error: " + t.getMessage(), t);
-                Toast.makeText(PaymentSelectionActivity.this, 
-                        "Network error. Please check your connection and try again.", 
-                        Toast.LENGTH_SHORT).show();
-            }
-        });
+                Log.e(TAG, "Firestore update failed: " + e.getMessage());
+                Toast.makeText(PaymentSelectionActivity.this, "Failed to confirm payment. Please try again.", Toast.LENGTH_SHORT).show();
+            });
     }
 
     private void handleConfirmationResponse(PaymentConfirmationResponse response) {

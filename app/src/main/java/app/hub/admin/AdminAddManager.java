@@ -13,9 +13,14 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.textfield.TextInputEditText;
 
 import app.hub.R;
-import app.hub.api.RegisterRequest;
-import app.hub.api.RegisterResponse;
 import app.hub.util.LoadingDialog;
+
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.FirebaseOptions;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
 
 public class AdminAddManager extends AppCompatActivity {
 
@@ -136,56 +141,56 @@ public class AdminAddManager extends AppCompatActivity {
             return;
         }
 
-        // Show loading dialog
         LoadingDialog loadingDialog = new LoadingDialog(this);
         loadingDialog.show();
 
-        // Create manager request
-        RegisterRequest registerRequest = new RegisterRequest(
-            username, firstName, lastName, email, "", "", 
-            password, confirmPassword, "manager", selectedBranch
-        );
-
-        ApiService apiService = ApiClient.getApiService();
-        Call<RegisterResponse> call = apiService.register(registerRequest);
-
-        call.enqueue(new Callback<RegisterResponse>() {
-            @Override
-            public void onResponse(Call<RegisterResponse> call, Response<RegisterResponse> response) {
-                loadingDialog.dismiss();
-                if (response.isSuccessful() && response.body() != null) {
-                    RegisterResponse registerResponse = response.body();
-                    if (registerResponse.isSuccess()) {
-                        Toast.makeText(AdminAddManager.this, "Manager created successfully", Toast.LENGTH_SHORT).show();
-                        setResult(RESULT_OK); // Set result for parent activity to refresh
-                        finish();
-                    } else {
-                        String errorMessage = "Failed to create manager";
-                        if (registerResponse.getErrors() != null) {
-                            // Handle validation errors
-                            StringBuilder sb = new StringBuilder();
-                            if (registerResponse.getErrors().getEmail() != null) {
-                                sb.append("Email: ").append(String.join(", ", registerResponse.getErrors().getEmail())).append("\n");
-                            }
-                            if (registerResponse.getErrors().getUsername() != null) {
-                                sb.append("Username: ").append(String.join(", ", registerResponse.getErrors().getUsername())).append("\n");
-                            }
-                            if (sb.length() > 0) {
-                                errorMessage = sb.toString().trim();
-                            }
-                        }
-                        Toast.makeText(AdminAddManager.this, errorMessage, Toast.LENGTH_LONG).show();
-                    }
-                } else {
-                    Toast.makeText(AdminAddManager.this, "Failed to create manager", Toast.LENGTH_SHORT).show();
-                }
+        // Use a temporary Firebase instance to create the user without signing out the admin
+        try {
+            FirebaseOptions options = FirebaseApp.getInstance().getOptions();
+            FirebaseApp tempApp;
+            try {
+                tempApp = FirebaseApp.getInstance("TempApp");
+            } catch (IllegalStateException e) {
+                tempApp = FirebaseApp.initializeApp(getApplicationContext(), options, "TempApp");
             }
+            
+            FirebaseAuth tempAuth = FirebaseAuth.getInstance(tempApp);
+            tempAuth.createUserWithEmailAndPassword(email, password)
+                .addOnSuccessListener(authResult -> {
+                    String uid = authResult.getUser().getUid();
+                    
+                    // Create user data in Firestore
+                    Map<String, Object> userData = new HashMap<>();
+                    userData.put("uid", uid);
+                    userData.put("first_name", firstName);
+                    userData.put("last_name", lastName);
+                    userData.put("username", username);
+                    userData.put("email", email);
+                    userData.put("role", "manager");
+                    userData.put("branch", selectedBranch);
+                    userData.put("created_at", com.google.firebase.Timestamp.now());
 
-            @Override
-            public void onFailure(Call<RegisterResponse> call, Throwable t) {
-                loadingDialog.dismiss();
-                Toast.makeText(AdminAddManager.this, "Network error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        });
+                    FirebaseFirestore.getInstance().collection("users").document(uid)
+                        .set(userData)
+                        .addOnSuccessListener(aVoid -> {
+                            loadingDialog.dismiss();
+                            Toast.makeText(AdminAddManager.this, "Manager created successfully!", Toast.LENGTH_SHORT).show();
+                            tempAuth.signOut(); // Sign out from temp app
+                            setResult(RESULT_OK);
+                            finish();
+                        })
+                        .addOnFailureListener(e -> {
+                            loadingDialog.dismiss();
+                            Toast.makeText(AdminAddManager.this, "Error saving user data: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        });
+                })
+                .addOnFailureListener(e -> {
+                    loadingDialog.dismiss();
+                    Toast.makeText(AdminAddManager.this, "Error creating auth user: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+        } catch (Exception e) {
+            loadingDialog.dismiss();
+            Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 }

@@ -1,16 +1,6 @@
 package app.hub.common;
 
 import app.hub.R;
-
-import app.hub.api.GoogleSignInRequest;
-import app.hub.api.GoogleSignInResponse;
-import app.hub.api.SetInitialPasswordRequest;
-import app.hub.api.SetInitialPasswordResponse;
-import app.hub.api.RegisterRequest;
-import app.hub.api.RegisterResponse;
-import app.hub.api.UpdateProfileRequest;
-import app.hub.api.UserResponse;
-import app.hub.api.VerifyEmailResponse;
 import app.hub.user_emailOtp;
 import app.hub.util.FCMTokenHelper;
 import app.hub.util.TokenManager;
@@ -47,8 +37,13 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.Arrays;
 
+import app.hub.api.GoogleSignInResponse;
+import app.hub.api.VerifyEmailResponse;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.DocumentSnapshot;
 
-// Activity for user registration - Multi-step flow container
 public class RegisterActivity extends AppCompatActivity {
 
 	private static final String TAG = "RegisterActivity";
@@ -740,66 +735,43 @@ public class RegisterActivity extends AppCompatActivity {
 
 	private void checkGoogleAccountExistsForRegistration(String email, String firstName, String lastName,
 			String phone) {
-		ApiService apiService = ApiClient.getApiService();
-		// id_token may be null if not configured, that's okay
-		String idToken = googleIdToken != null && !googleIdToken.isEmpty() ? googleIdToken : "";
+		Log.d(TAG, "Checking Google account existence in Firestore - Email: " + email);
 
-		// For check existence, we don't need location data, so pass nulls/empty
-		GoogleSignInRequest request = new GoogleSignInRequest(
-				idToken,
-				email,
-				firstName != null ? firstName : "",
-				lastName != null ? lastName : "",
-				phone != null ? phone : "");
-
-		Log.d(TAG, "Checking Google account existence - Email: " + email + ", First: " + firstName + ", Last: "
-				+ lastName + ", Phone: " + phone);
-
-		// Use the SIGN-IN endpoint to check if account exists
-		Call<GoogleSignInResponse> call = apiService.googleSignIn(request);
-		call.enqueue(new Callback<>() {
-			@Override
-			public void onResponse(@NonNull Call<GoogleSignInResponse> call,
-					@NonNull Response<GoogleSignInResponse> response) {
-				if (response.isSuccessful() && response.body() != null) {
-					GoogleSignInResponse signInResponse = response.body();
-					if (signInResponse.isSuccess()) {
-						// Account already exists - log user in automatically
-						Log.d(TAG, "Google account exists, logging user in");
-						handleGoogleLoginSuccess(signInResponse);
-					} else {
-						// Account doesn't exist - proceed with registration
-						proceedWithGoogleRegistration(email, firstName, lastName, phone, idToken);
-					}
-				} else if (response.code() == 404) {
-					// 404 means account doesn't exist - proceed with registration
-					Log.d(TAG, "Google account doesn't exist (404), proceeding with registration");
-					proceedWithGoogleRegistration(email, firstName, lastName, phone, idToken);
+		FirebaseFirestore.getInstance().collection("users")
+			.whereEqualTo("email", email)
+			.get()
+			.addOnSuccessListener(queryDocumentSnapshots -> {
+				if (!queryDocumentSnapshots.isEmpty()) {
+					// Account exists, handle as login
+					Log.d(TAG, "Google account exists in Firestore, logging in...");
+					DocumentSnapshot doc = queryDocumentSnapshots.getDocuments().get(0);
+					String role = doc.getString("role");
+					
+					tokenManager.saveEmail(email);
+					tokenManager.saveRole(role);
+					tokenManager.saveName(firstName + " " + lastName);
+					tokenManager.forceCommit();
+					
+					navigateToUserDashboard(role);
 				} else {
-					// Handle other error responses
-					Log.w(TAG, "Google account check failed with code " + response.code() + ", proceeding with registration");
-					proceedWithGoogleRegistration(email, firstName, lastName, phone, idToken);
+					// Account does not exist, proceed with registration
+					Log.d(TAG, "Google account does not exist, proceeding with registration");
+					proceedWithGoogleRegistration(email, firstName, lastName, phone, "");
 				}
-			}
-
-			@Override
-			public void onFailure(@NonNull Call<GoogleSignInResponse> call, @NonNull Throwable t) {
-				Log.e(TAG, "Error checking Google account existence: " + t.getMessage(), t);
-				runOnUiThread(() -> {
-					Toast.makeText(RegisterActivity.this, 
-						"Network error. Please check your connection and try again.", 
-						Toast.LENGTH_LONG).show();
-				});
-			}
-		});
+			})
+			.addOnFailureListener(e -> {
+				Log.e(TAG, "Error checking account existence", e);
+				Toast.makeText(this, "Error checking account. Please try again.", Toast.LENGTH_SHORT).show();
+			});
 	}
 
 	private void proceedWithGoogleRegistration(String email, String firstName, String lastName, String phone,
 			String idToken) {
-		Log.d(TAG, "Account doesn't exist, proceeding to Tell Us form");
-
-		// Navigate to "Tell Us" to collect phone number and other details
-		Log.d(TAG, "Prompting user for phone number after Google registration");
+		// Store data and move to "Tell Us" to get phone/location
+		setUserEmail(email);
+		setUserPersonalInfo(firstName, lastName, "", phone, "");
+		isGoogleSignIn = true;
+		
 		showTellUsFragment();
 	}
 
@@ -857,6 +829,11 @@ public class RegisterActivity extends AppCompatActivity {
 	}
 
 	// Navigate to appropriate dashboard based on user role
+	public void onOtpVerified() {
+		// Mock success for now
+		showTellUsFragment();
+	}
+
 	private void navigateToUserDashboard(String role) {
 		Intent intent;
 

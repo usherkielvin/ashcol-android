@@ -35,10 +35,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 import app.hub.R;
-import app.hub.api.UpdateLocationRequest;
-import app.hub.api.UpdateLocationResponse;
 import app.hub.util.GooglePlayServicesUtils;
 import app.hub.util.TokenManager;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
+import java.util.HashMap;
+import java.util.Map;
 
 public class EmployeeMapActivity extends AppCompatActivity implements OnMapReadyCallback {
 
@@ -239,24 +243,22 @@ public class EmployeeMapActivity extends AppCompatActivity implements OnMapReady
     }
 
     private void updateLocationOnServer(double latitude, double longitude) {
-        String token = tokenManager.getToken();
-        if (token == null) return;
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) return;
 
-        UpdateLocationRequest request = new UpdateLocationRequest(latitude, longitude);
-        ApiService apiService = ApiClient.getApiService();
-        Call<UpdateLocationResponse> call = apiService.updateLocation("Bearer " + token, request);
+        Map<String, Object> locationData = new HashMap<>();
+        locationData.put("latitude", latitude);
+        locationData.put("longitude", longitude);
+        locationData.put("last_location_update", com.google.firebase.Timestamp.now());
 
-        call.enqueue(new Callback<UpdateLocationResponse>() {
-            @Override
-            public void onResponse(Call<UpdateLocationResponse> call, Response<UpdateLocationResponse> response) {
+        FirebaseFirestore.getInstance().collection("users").document(user.getUid())
+            .update(locationData)
+            .addOnSuccessListener(aVoid -> {
                 // Location updated successfully (silent)
-            }
-
-            @Override
-            public void onFailure(Call<UpdateLocationResponse> call, Throwable t) {
-                // Handle error silently for now
-            }
-        });
+            })
+            .addOnFailureListener(e -> {
+                // Handle error silently
+            });
     }
 
     private void startNavigation() {

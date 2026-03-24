@@ -26,7 +26,6 @@ import java.net.URL;
 
 import app.hub.R;
 import app.hub.common.MainActivity;
-import app.hub.employee.EmployeePersonalInfoFragment;
 import app.hub.util.LoadingDialog;
 import app.hub.util.TokenManager;
 import app.hub.util.UiPreferences;
@@ -35,8 +34,10 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 
-import app.hub.api.LogoutResponse;
-import app.hub.api.UserResponse;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class ManagerProfileFragment extends Fragment {
 

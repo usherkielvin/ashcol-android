@@ -43,7 +43,6 @@ public class ChatbotBottomSheetFragment extends BottomSheetDialogFragment {
     private List<Message> messageList;
     private ChatAdapter chatAdapter;
     
-    private ApiService apiService;
     private TokenManager tokenManager;
 
     @Override
@@ -52,8 +51,7 @@ public class ChatbotBottomSheetFragment extends BottomSheetDialogFragment {
         // Set custom theme for rounded corners and styling
         setStyle(STYLE_NORMAL, R.style.CustomBottomSheetDialogTheme);
         
-        // Initialize API service and token manager
-        apiService = ApiClient.getApiService();
+        // Initialize token manager
         tokenManager = new TokenManager(requireContext());
     }
 
@@ -194,98 +192,25 @@ public class ChatbotBottomSheetFragment extends BottomSheetDialogFragment {
         // Disable send button
         sendButton.setEnabled(false);
 
-        // Check network connectivity
-        if (!isNetworkAvailable()) {
+        // Mock a delayed response from the chatbot
+        new android.os.Handler().postDelayed(() -> {
+            if (!isAdded()) return;
+
             // Remove typing indicator
             messageList.remove(messageList.size() - 1);
             chatAdapter.notifyItemRemoved(messageList.size());
+
+            String reply = "I'm currently being migrated to Firebase. For immediate assistance, please contact support@ashcol.com";
+            Message botMessage = new Message(reply, false);
             
-            Message errorMessage = new Message("No internet connection. Please check your network settings.", false);
-            messageList.add(errorMessage);
-            app.hub.util.ChatbotStateManager.getInstance().addMessage(errorMessage);
+            messageList.add(botMessage);
+            app.hub.util.ChatbotStateManager.getInstance().addMessage(botMessage);
             chatAdapter.notifyItemInserted(messageList.size() - 1);
             recyclerView.scrollToPosition(messageList.size() - 1);
-            sendButton.setEnabled(true);
-            return;
-        }
-
-        String token = tokenManager.getToken();
-        if (token == null) {
-            // Remove typing indicator
-            messageList.remove(messageList.size() - 1);
-            chatAdapter.notifyItemRemoved(messageList.size());
             
-            Message errorMessage = new Message("Your session has expired. Please log in again.", false);
-            messageList.add(errorMessage);
-            app.hub.util.ChatbotStateManager.getInstance().addMessage(errorMessage);
-            chatAdapter.notifyItemInserted(messageList.size() - 1);
-            recyclerView.scrollToPosition(messageList.size() - 1);
+            // Re-enable send button
             sendButton.setEnabled(true);
-            return;
-        }
-
-        Call<ChatResponse> call = apiService.sendMessage("Bearer " + token, new ChatRequest(messageText));
-        call.enqueue(new Callback<ChatResponse>() {
-            @Override
-            public void onResponse(@NonNull Call<ChatResponse> call, @NonNull Response<ChatResponse> response) {
-                // Remove typing indicator
-                messageList.remove(messageList.size() - 1);
-                chatAdapter.notifyItemRemoved(messageList.size());
-                
-                if (response.isSuccessful() && response.body() != null) {
-                    ChatResponse chatResponse = response.body();
-                    
-                    // Validate response format
-                    Message botMessage;
-                    if (chatResponse.getReply() == null || chatResponse.getReply().isEmpty()) {
-                        botMessage = new Message("Unable to process response. Please try again.", false);
-                    } else if (chatResponse.getMethod() == null || 
-                               (!chatResponse.getMethod().equals("keyword") && 
-                                !chatResponse.getMethod().equals("ai") && 
-                                !chatResponse.getMethod().equals("fallback"))) {
-                        Log.w(TAG, "Invalid response method: " + chatResponse.getMethod());
-                        botMessage = new Message(chatResponse.getReply(), false);
-                    } else {
-                        botMessage = new Message(chatResponse.getReply(), false);
-                    }
-                    
-                    messageList.add(botMessage);
-                    app.hub.util.ChatbotStateManager.getInstance().addMessage(botMessage);
-                } else {
-                    handleApiError(response);
-                }
-                chatAdapter.notifyItemInserted(messageList.size() - 1);
-                recyclerView.scrollToPosition(messageList.size() - 1);
-                
-                // Re-enable send button
-                sendButton.setEnabled(true);
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ChatResponse> call, @NonNull Throwable t) {
-                Log.e(TAG, "API Failure: ", t);
-                
-                // Remove typing indicator
-                messageList.remove(messageList.size() - 1);
-                chatAdapter.notifyItemRemoved(messageList.size());
-                
-                String errorText = "Failed to connect to the server. Please check your internet connection and try again. For immediate assistance, contact support@ashcol.com";
-                
-                // Check if it's a timeout error
-                if (t instanceof java.net.SocketTimeoutException) {
-                    errorText = "Connection timeout. Please check your internet connection and try again.";
-                }
-                
-                Message errorMessage = new Message(errorText, false);
-                messageList.add(errorMessage);
-                app.hub.util.ChatbotStateManager.getInstance().addMessage(errorMessage);
-                chatAdapter.notifyItemInserted(messageList.size() - 1);
-                recyclerView.scrollToPosition(messageList.size() - 1);
-                
-                // Re-enable send button
-                sendButton.setEnabled(true);
-            }
-        });
+        }, 1500);
     }
 
     /**
@@ -317,47 +242,8 @@ public class ChatbotBottomSheetFragment extends BottomSheetDialogFragment {
     /**
      * Handle API error responses.
      */
-    private void handleApiError(Response<ChatResponse> response) {
-        String errorText;
-        
-        switch (response.code()) {
-            case 400:
-                errorText = "Unable to process your message. Please try rephrasing.";
-                break;
-            case 401:
-                errorText = "Your session has expired. Please log in again.";
-                break;
-            case 403:
-                errorText = "You don't have permission to use the chatbot. Please contact support@ashcol.com";
-                break;
-            case 404:
-                errorText = "Chatbot service is temporarily unavailable. Please try again later.";
-                break;
-            case 500:
-                errorText = "Something went wrong on our end. Our team has been notified. Please try again later or contact support@ashcol.com";
-                break;
-            case 503:
-                errorText = "Chatbot service is temporarily unavailable for maintenance. Please try again later.";
-                break;
-            default:
-                errorText = "An error occurred. Please try again or contact support@ashcol.com";
-                break;
-        }
-        
-        // Log detailed error for debugging
-        String errorBody = "No error body";
-        try (okhttp3.ResponseBody errorResponseBody = response.errorBody()) {
-            if (errorResponseBody != null) {
-                errorBody = errorResponseBody.string();
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Error parsing error body", e);
-        }
-        Log.e(TAG, "API Error: " + response.code() + " " + errorBody);
-        
-        Message errorMessage = new Message(errorText, false);
-        messageList.add(errorMessage);
-        app.hub.util.ChatbotStateManager.getInstance().addMessage(errorMessage);
+    private void handleApiError(Object response) {
+        // Not used anymore in Firebase flow
     }
 
     /**
