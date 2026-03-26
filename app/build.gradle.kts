@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId = "app.hub"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -85,32 +85,30 @@ dependencies {
     implementation(libs.cardview)
     implementation(libs.recyclerview)
     // SwipeRefreshLayout for pull-to-refresh
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation(libs.swiperefreshlayout)
     // Google Sign-In
-    implementation("com.google.android.gms:play-services-auth:21.0.0")
-    // Firebase Firestore
-    implementation("com.google.firebase:firebase-firestore")
+    implementation(libs.play.services.auth)
     // Google Maps
-    implementation("com.google.android.gms:play-services-maps:19.0.0")
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation(libs.play.services.maps)
+    implementation(libs.play.services.location)
     // Google Plus Codes (Open Location Code) - Official Library
-    implementation("com.google.openlocationcode:openlocationcode:1.0.4")
+    implementation(libs.openlocationcode)
     // Picasso for image loading
-    implementation("com.squareup.picasso:picasso:2.8")
+    implementation(libs.picasso)
     // Glide for GIF support
-    implementation("com.github.bumptech.glide:glide:4.16.0")
-    annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
-    implementation("com.facebook.shimmer:shimmer:0.5.0")
+    implementation(libs.glide)
+    annotationProcessor(libs.glide.compiler)
+    implementation(libs.shimmer)
     testImplementation(libs.junit)
-    testImplementation("org.mockito:mockito-core:5.8.0")
-    testImplementation("org.robolectric:robolectric:4.11.1")
-    testImplementation("androidx.fragment:fragment-testing-manifest:1.6.2")
-    testImplementation("androidx.constraintlayout:constraintlayout:2.2.0")
+    testImplementation(libs.mockito.core)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.constraintlayout)
     // jqwik for property-based testing
-    testImplementation("net.jqwik:jqwik:1.8.2")
-    testRuntimeOnly("net.jqwik:jqwik-engine:1.8.2")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.10.1")
-    debugImplementation("androidx.fragment:fragment-testing:1.6.2")
+    testImplementation(libs.jqwik)
+    testRuntimeOnly(libs.jqwik.engine)
+    testRuntimeOnly(libs.junit.platform.launcher)
+    debugImplementation(libs.fragment.testing)
+    debugImplementation(libs.fragment.testing.manifest)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }
